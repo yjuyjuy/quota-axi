@@ -314,6 +314,7 @@ It is generated from `src/skill.ts`; update it with `pnpm run build:skill` and v
 | `quota-axi`      | Report supported local quota windows                 |
 | `auth`           | Report local auth-source availability, no values     |
 | `models`         | Join curated model buckets with local quota evidence |
+| `validate`       | Check the account registry and declarative policy    |
 | `update`         | Upgrade quota-axi to the latest published version    |
 | `update --check` | Report current vs. latest without installing         |
 
@@ -515,6 +516,69 @@ Auth source entries can include `credentialPresent` when a non-secret probe conf
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Auth source statuses | `available`, `missing`, `invalid`, `expired`, `skipped`, or `error`                                                                                       |
 | Auth source names    | `oauth-file`, `keychain`, `auth-json`, `auth-env`, `apps-json`, `state-vscdb`, `cli-keychain`, `cli-rpc`, `pi:kimi-coding`, `pi:xai`, and `kimi-code-cli` |
+
+## Account-switch orchestrator (Phase 1)
+
+quota-axi owns two captain-editable declarative files for the fleet account
+orchestrator (ADR 0031). This phase ships their schemas, a `validate`
+subcommand, and hot-reload. It is data only: quota-axi validates and reloads
+these files but never routes, switches accounts, or mutates provider state. The
+mutating decider and `switch` verb are separate later tickets.
+
+Limits are observation-driven, so `plan` is informational only and is never
+used for arithmetic.
+
+### Files and locations
+
+| File               | Default location                                                                                          | Overrides                                       |
+| ------------------ | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Account registry   | `$QUOTA_AXI_CONFIG_HOME`, else `$XDG_CONFIG_HOME/quota-axi`, else `~/.config/quota-axi` → `accounts.yaml` | `$QUOTA_AXI_REGISTRY`, or `validate --registry` |
+| Declarative policy | same config directory → `policy.yaml`                                                                     | `$QUOTA_AXI_POLICY`, or `validate --policy`     |
+
+The last valid policy is snapshotted to `last-valid-policy.json` under the cache
+directory (`$XDG_CACHE_HOME/quota-axi`, else `~/.cache/quota-axi`), `0600`. A bad
+edit never overwrites that snapshot, so the mechanical fallback always
+terminates. Runnable example files live in [`examples/orchestrator`](examples/orchestrator).
+
+### Account registry schema
+
+Top-level `schema_version: 1` plus `accounts[]`. Each account:
+
+| Field                  | Type                          | Notes                                                              |
+| ---------------------- | ----------------------------- | ------------------------------------------------------------------ |
+| `id`                   | string, unique                | Referenced by the policy file                                      |
+| `provider`             | string                        | Provider slug, for example `claude`                                |
+| `label`                | string                        | Human-facing label                                                 |
+| `plan`                 | string, optional              | Informational only, never arithmetic                               |
+| `cost_class`           | `fixed` or `metered`          |                                                                    |
+| `priority_tier`        | integer                       | Lower binds first                                                  |
+| `harness_eligibility`  | string[]                      | Harness ids, for example `[jcode]`                                 |
+| `binding`              | `global` or `per-session`     |                                                                    |
+| `credential_store_ref` | string                        | Opaque pointer into the credential store, never a credential value |
+| `captain_reserve`      | window id → percent, optional | Owner reserve floors                                               |
+
+Credentials are never stored in the registry. A key such as `api_key`, `token`,
+`secret`, or `password` on an account is a validation error.
+
+### Declarative policy schema
+
+Top-level `schema_version: 1` plus ordered `tiers[]`; earlier tiers and earlier
+pools within a tier are preferred. Each tier has a unique `name` and non-empty
+`pools[]`; each pool lists registry `accounts` and optional per-window
+`min_reserve` floors. Optional top-level `captain_reserve` (window id → percent)
+and `priming[]` gates (`window`, `resume_at_percent_remaining`, optional
+`accounts`) complete the schema. The Phase 2 model map slots in later as an
+additive optional `model_map` field without a breaking change; Phase 1 only
+requires it to be a mapping object if present.
+
+### `validate`
+
+`quota-axi validate` checks both files for schema correctness and referential
+integrity: every account referenced by the policy (in a pool or a priming gate)
+must exist in the registry. Every malformed case yields an actionable issue with
+its file, path, code, and message. It exits `1` when invalid, `0` when valid,
+and refreshes the last-valid-policy fallback only on success. `--json` emits the
+normalized issue list; `--registry` and `--policy` point at alternate files.
 
 ## Security Posture
 

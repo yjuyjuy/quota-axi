@@ -100,11 +100,11 @@ or when comparing supported local provider headroom side by side.
 ## Usage
 
 ```
-usage: quota-axi [quota|auth|models] [flags]
-commands[3]:
-  (none)=quota, auth, models
+usage: quota-axi [quota|auth|models|validate] [flags]
+commands[4]:
+  (none)=quota, auth, models, validate
 output:
-  Default TOON reports local quota evidence. models is a deterministic data join; --sort runway is explicit opt-in ordering. --tui renders a live human terminal report instead (q quits).
+  Default TOON reports local quota evidence. models is a deterministic data join; --sort runway is explicit opt-in ordering. --tui renders a live human terminal report instead (q quits). validate checks the account registry + policy files.
 flags[11]:
   --provider <claude,codex,cursor,copilot,grok,kimi>, --json, --full, --tui, --refresh <30s-24h>, --once, --allow-keychain-prompt, --intelligence <high|medium|low>, --sort <runway>, --help, -v/--version
 examples:
@@ -119,6 +119,8 @@ examples:
   quota-axi auth
   quota-axi models --intelligence high
   quota-axi models --sort runway
+  quota-axi validate
+  quota-axi validate --json
 ```
 
 ## Tips

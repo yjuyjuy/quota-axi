@@ -1,0 +1,37 @@
+# quota-axi declarative policy (captain/agent-editable).
+#
+# The account-switch decider (a separate later ticket) applies a fixed
+# precedence over this policy and the account registry. Complex strategies are
+# authored by rewriting this file; quota-axi only validates and hot-reloads it.
+# The last valid policy is always retained as the mechanical fallback.
+#
+# Ordering is meaningful: earlier tiers, and earlier pools within a tier, are
+# preferred. Every account id referenced here must exist in accounts.yaml.
+#
+# The Phase 2 model map (per-provider model equivalents plus a required default
+# model per provider) slots in later as an additive `model_map` field without
+# breaking this schema. It is intentionally absent in Phase 1.
+schema_version: 1
+
+# Policy-level reserve floors the decider must respect across all pools,
+# keyed by quota window id. Percent of the window that must remain unused.
+captain_reserve:
+  seven_day: 5
+
+tiers:
+  - name: fixed-cost-first
+    pools:
+      - accounts: [claude-max-primary, claude-pro-personal]
+        min_reserve:
+          five_hour: 5
+
+  - name: metered-fallback
+    pools:
+      - accounts: [claude-team-seat-a]
+
+# Priming gates keep a cooled-down account out of selection until the named
+# window recovers to the given remaining-percent threshold.
+priming:
+  - window: seven_day
+    resume_at_percent_remaining: 20
+    accounts: [claude-max-primary]
