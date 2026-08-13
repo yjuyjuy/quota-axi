@@ -1,0 +1,26 @@
+{
+  "//": "Example observations input for `quota-axi decide` (ADR 0031, Phase 1).",
+  "//now": "The decision clock (ISO). Tripwire recovery is measured against it.",
+  "now": "2026-08-13T21:00:00.000Z",
+  "//harness": "Optional. Phase 1 defaults to jcode.",
+  "harness": "jcode",
+  "//provider": "Optional. Phase 1 defaults to claude.",
+  "provider": "claude",
+  "//sessions": "Optional. Omit for a single all-sessions decision.",
+  "sessions": [{ "id": "session-a", "currentAccount": "claude-team-seat-a" }],
+  "//observations": "Per-account window telemetry keyed by registry account id. `windows` is remaining-percent per quota window id. `freshness: unknown` (or a missing entry) marks the account UNKNOWN. `exhaustedUntil` is a recorded tripwire ISO deadline.",
+  "observations": {
+    "claude-max-primary": {
+      "freshness": "known",
+      "windows": { "five_hour": 72, "seven_day": 55 }
+    },
+    "claude-pro-personal": {
+      "freshness": "known",
+      "windows": { "five_hour": 40, "seven_day": 30 }
+    },
+    "claude-team-seat-a": {
+      "freshness": "known",
+      "windows": { "five_hour": 90, "seven_day": 88 }
+    }
+  }
+}

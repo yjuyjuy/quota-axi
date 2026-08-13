@@ -583,6 +583,53 @@ its file, path, code, and message. It exits `1` when invalid, `0` when valid,
 and refreshes the last-valid-policy fallback only on success. `--json` emits the
 normalized issue list; `--registry` and `--policy` point at alternate files.
 
+### `decide`
+
+`quota-axi decide` is the pure account-switch decider (ADR 0031, Phase 1): the
+brain that reads the account registry, the declarative policy, and an
+observations file of per-account window telemetry, then emits a versioned
+decision naming the chosen account per session and the reason chain behind it.
+It is strictly read-only and has zero side effects: it writes no store, switches
+nothing, and never touches provider state. The mutating actuation is the
+separate later `switch` verb.
+
+Observations are supplied as a JSON file (`--observations <path>`) rather than
+fetched live, because a live per-account fetch would require resolving each
+account's distinct credential, which is out of Phase 1 scope. The file is a JSON
+object with an `observations` map keyed by registry account id; each entry has a
+remaining-percent `windows` map (keyed by quota window id), an optional
+`freshness` (`known` or `unknown`), and an optional `exhaustedUntil` tripwire
+deadline. Optional top-level `now`, `harness`, `provider`, and `sessions` fields
+tune the decision; omit `sessions` for a single `all-sessions` decision. A
+runnable example lives in
+[`examples/orchestrator/observations.json`](examples/orchestrator/observations.json).
+
+The decision logic, in fixed precedence:
+
+- **Tier fallback across mixed Claude plans.** Candidates come from the policy
+  tiers/pools in author order, restricted to accounts eligible for the harness
+  and provider, then stable-partitioned so every fixed-cost subscription account
+  precedes every metered API account. A metered account is only ever considered
+  after every fixed-cost account, even if the policy tiers are mis-ordered.
+- **Exhaustion.** An account is out when a reserve floor is crossed in any
+  floored window (pool `min_reserve`, policy `captain_reserve`, or the account's
+  own `captain_reserve`, whichever is most conservative per window wins), when a
+  priming gate holds it below its resume threshold, or when a recorded tripwire
+  (`exhaustedUntil`) is still in the future.
+- **Unknown-data rule.** Missing or stale telemetry makes an account UNKNOWN. An
+  unknown account is used only when no known-good account remains, and its
+  unknown state is never a reason to switch away from a working current account.
+- **Termination.** When everything is exhausted, `decide` returns `hold` rather
+  than looping.
+
+The decision JSON is versioned (`schemaVersion`, currently `1`) so downstream
+callers (firstmate dispatch-select, the watcher) can pin to it. `--json` emits
+the full decision including each `reasons[]` chain; default TOON is a compact
+per-session summary. `--registry` and `--policy` point at alternate files.
+Phase 1 builds no cross-provider moves and no model mapping; rotation within the
+Claude pool never changes the model. The precedence and model-map hooks are
+preserved in the shape for Phase 2.
+
 ## Security Posture
 
 ### Provider credential sources

@@ -6,18 +6,19 @@ import {
   type QuotaContext,
 } from "./commands.js";
 import { validateCommand } from "./orchestrator/command.js";
+import { decideCommand } from "./orchestrator/decide-command.js";
 import { VERSION } from "./version.js";
 
 export const DESCRIPTION =
   "Report local agent-provider quota windows and model quota evidence.";
 
-export const TOP_HELP = `usage: quota-axi [quota|auth|models|validate] [flags]
-commands[4]:
-  (none)=quota, auth, models, validate
+export const TOP_HELP = `usage: quota-axi [quota|auth|models|validate|decide] [flags]
+commands[5]:
+  (none)=quota, auth, models, validate, decide
 output:
-  Default TOON reports local quota evidence. models is a deterministic data join; --sort runway is explicit opt-in ordering. --tui renders a live human terminal report instead (q quits). validate checks the account registry + policy files.
-flags[11]:
-  --provider <claude,codex,cursor,copilot,grok,kimi>, --json, --full, --tui, --refresh <30s-24h>, --once, --allow-keychain-prompt, --intelligence <high|medium|low>, --sort <runway>, --help, -v/--version
+  Default TOON reports local quota evidence. models is a deterministic data join; --sort runway is explicit opt-in ordering. --tui renders a live human terminal report instead (q quits). validate checks the account registry + policy files. decide is the pure account-switch decider (ADR 0031 Phase 1): registry + policy + observations in, versioned decision JSON out, zero side effects.
+flags[12]:
+  --provider <claude,codex,cursor,copilot,grok,kimi>, --json, --full, --tui, --refresh <30s-24h>, --once, --allow-keychain-prompt, --intelligence <high|medium|low>, --sort <runway>, --observations <path>, --help, -v/--version
 examples:
   quota-axi
   quota-axi --provider claude
@@ -32,6 +33,8 @@ examples:
   quota-axi models --sort runway
   quota-axi validate
   quota-axi validate --json
+  quota-axi decide --observations ./observations.json
+  quota-axi decide --observations ./observations.json --json
 `;
 
 type MainOptions = {
@@ -55,6 +58,7 @@ export async function main(options: MainOptions = {}): Promise<void> {
       auth: authCommand,
       models: modelsCommand,
       validate: validateCommand,
+      decide: decideCommand,
     },
     // `quota` is the implicit default command, so the bare-invocation home view
     // is never reached (see normalizeArgv); wiring it keeps the SDK contract.
@@ -64,7 +68,8 @@ export async function main(options: MainOptions = {}): Promise<void> {
       command === "quota" ||
       command === "auth" ||
       command === "models" ||
-      command === "validate"
+      command === "validate" ||
+      command === "decide"
         ? TOP_HELP
         : undefined,
   });
@@ -103,6 +108,7 @@ export function normalizeArgv(raw: string[]): string[] {
     first === "auth" ||
     first === "models" ||
     first === "validate" ||
+    first === "decide" ||
     first === "update"
   ) {
     return raw;
@@ -148,6 +154,7 @@ function findCommand(raw: string[]): number {
       arg === "auth" ||
       arg === "models" ||
       arg === "validate" ||
+      arg === "decide" ||
       arg === "update"
     ) {
       return index;
