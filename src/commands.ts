@@ -2,6 +2,7 @@ import { AxiError } from "axi-sdk-js";
 import { annotateQuotaAdvice } from "./advice.js";
 import { parseFlags, parseModelsFlags, type QuotaFlags } from "./args.js";
 import { writeCachedProviders } from "./cache.js";
+import { readThroughUsageCache } from "./usage-cache.js";
 import { withQuotaSemantics } from "./interpretation.js";
 import { createModelsResponse, MODEL_CATALOG_PROVIDER_IDS } from "./models.js";
 import { nowIso } from "./lib/time.js";
@@ -186,13 +187,31 @@ export async function fetchQuota(
   const generatedAt = nowIso();
   const results = (
     await Promise.all(
-      providers.map((provider) => PROVIDERS[provider].fetchQuota(options)),
+      providers.map((provider) => fetchProviderThroughCache(provider, options)),
     )
   ).map((provider) => withQuotaSemantics(provider, generatedAt));
   return annotateQuotaAdvice({
     generatedAt,
     providers: results,
   });
+}
+
+/**
+ * Fetch one provider through the shared host usage cache so concurrent callers
+ * across the fleet coalesce onto about one upstream fetch per TTL (ADR 0031).
+ * A cache I/O failure must never block a live report, so any error falls back
+ * to a direct provider fetch.
+ */
+async function fetchProviderThroughCache(
+  provider: ProviderId,
+  options: ProviderOptions,
+): Promise<ProviderQuota> {
+  const fetch = () => PROVIDERS[provider].fetchQuota(options);
+  try {
+    return await readThroughUsageCache(provider, fetch);
+  } catch {
+    return fetch();
+  }
 }
 
 async function inspectAuth(

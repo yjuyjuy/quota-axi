@@ -132,7 +132,10 @@ globalThis.fetch = async (input, init) => {
       cleanupCompleted: true,
     });
     expect(snapshot(authPath)).toEqual(authBefore);
-    expect(readdirSync(fixture.cacheHome)).toEqual([]);
+    // A failed fetch persists no cached usage data: the shared single-flight
+    // lock may leave empty scaffolding directories behind, but no usage record
+    // or quota snapshot file is written for a provider that did not succeed.
+    expect(cachedFiles(fixture.cacheHome)).toEqual([]);
     expect(result.stdout).not.toContain("synthetic-cleanup-key-731");
   });
 });
@@ -179,4 +182,18 @@ function snapshot(path: string): FileSnapshot {
     mtimeMs: stats.mtimeMs,
     size: stats.size,
   };
+}
+
+/** Every regular file (not directory) under a cache home, relative to it. */
+function cachedFiles(cacheHome: string): string[] {
+  const files: string[] = [];
+  const walk = (directory: string): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const full = join(directory, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else files.push(full.slice(cacheHome.length + 1));
+    }
+  };
+  walk(cacheHome);
+  return files.sort();
 }

@@ -1,4 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { main } from "../src/cli.js";
 import { PROVIDERS } from "../src/providers/index.js";
@@ -10,6 +13,15 @@ const originalCursor = PROVIDERS.cursor;
 const originalCopilot = PROVIDERS.copilot;
 const originalGrok = PROVIDERS.grok;
 const originalKimi = PROVIDERS.kimi;
+const originalXdgCacheHome = process.env.XDG_CACHE_HOME;
+let tempDir: string | undefined;
+
+beforeEach(() => {
+  // Isolate the shared usage cache so read-through fetches never coalesce
+  // across tests or onto a real host cache.
+  tempDir = mkdtempSync(join(tmpdir(), "quota-axi-models-cache-"));
+  process.env.XDG_CACHE_HOME = tempDir;
+});
 
 afterEach(() => {
   PROVIDERS.claude = originalClaude;
@@ -19,6 +31,10 @@ afterEach(() => {
   PROVIDERS.grok = originalGrok;
   PROVIDERS.kimi = originalKimi;
   process.exitCode = undefined;
+  if (originalXdgCacheHome === undefined) delete process.env.XDG_CACHE_HOME;
+  else process.env.XDG_CACHE_HOME = originalXdgCacheHome;
+  if (tempDir) rmSync(tempDir, { recursive: true, force: true });
+  tempDir = undefined;
 });
 
 describe("models command", () => {
