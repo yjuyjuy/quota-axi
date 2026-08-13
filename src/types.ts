@@ -197,8 +197,29 @@ export type ProviderQuota = {
     remedyCommand?: string;
     untrustedWindowIds?: string[];
     sourcesTried: string[];
+    /**
+     * Provenance and age of a result drawn from the shared host usage cache.
+     * Present whenever the shared cache backs this report so consumers can
+     * age-degrade trust (ADR 0031): a `fresh` marker is worth full trust, an
+     * `aging` marker should shrink assumed headroom, and an `unknown` marker
+     * means the account should be treated as unknown until a fresh fetch.
+     */
+    usageCache?: UsageCacheMarker;
   };
   attempts?: SourceAttempt[];
+};
+
+/**
+ * A per-provider marker describing how far a served result has aged inside the
+ * shared host usage cache. `servedFromCache` distinguishes a coalesced or
+ * backoff-served cache hit (no upstream fetch this call) from a genuinely fresh
+ * fetch that was merely also written to the cache.
+ */
+export type UsageCacheMarker = {
+  fetchedAt: string;
+  ageSeconds: number;
+  trust: "fresh" | "aging" | "unknown";
+  servedFromCache: boolean;
 };
 
 export type QuotaAxiResponse = {

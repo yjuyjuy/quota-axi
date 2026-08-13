@@ -48,6 +48,26 @@ export function cacheFilePath(): string {
   return join(cacheDirPath(), "quotas.json");
 }
 
+/**
+ * Per-provider shared usage-cache record path. Keyed by provider so every local
+ * caller (any jcode session, any quota-axi invocation) reads and writes the
+ * same host-wide record for that provider, coalescing to about one upstream
+ * fetch per TTL (ADR 0031).
+ */
+export function usageCacheRecordPath(key: string): string {
+  return join(cacheDirPath(), "usage", `${sanitizeCacheKey(key)}.json`);
+}
+
+/** Cross-process single-flight lock path paired with a usage-cache record. */
+export function usageCacheLockPath(key: string): string {
+  return join(cacheDirPath(), "usage", `${sanitizeCacheKey(key)}.lock`);
+}
+
+function sanitizeCacheKey(key: string): string {
+  const safe = key.replace(/[^a-zA-Z0-9._-]+/g, "_");
+  return safe.length > 0 ? safe : "unknown";
+}
+
 export function claudeKeychainAccessMarkerPath(
   account: string,
   configDir?: string,
