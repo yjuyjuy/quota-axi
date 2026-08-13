@@ -1,0 +1,41 @@
+# quota-axi account registry (captain-editable).
+#
+# Phase 1 (ADR 0031) ships Claude accounts only, all eligible for the jcode
+# harness. Later tickets add other providers and harnesses additively.
+#
+# NEVER store credentials here. `credential_store_ref` is an opaque pointer
+# into a credential store; the actual token lives there, not in this file.
+# `plan` is informational only and is never used for any arithmetic.
+schema_version: 1
+accounts:
+  - id: claude-pro-personal
+    provider: claude
+    label: Claude Pro (personal)
+    plan: pro
+    cost_class: fixed
+    priority_tier: 1
+    harness_eligibility: [jcode]
+    binding: global
+    credential_store_ref: claude:oauth:personal
+
+  - id: claude-max-primary
+    provider: claude
+    label: Claude Max (primary)
+    plan: max
+    cost_class: fixed
+    priority_tier: 0
+    harness_eligibility: [jcode]
+    binding: global
+    credential_store_ref: claude:oauth:max-primary
+    captain_reserve:
+      seven_day: 10
+
+  - id: claude-team-seat-a
+    provider: claude
+    label: Claude Team (seat A)
+    plan: team
+    cost_class: metered
+    priority_tier: 2
+    harness_eligibility: [jcode]
+    binding: per-session
+    credential_store_ref: claude:oauth:team-seat-a

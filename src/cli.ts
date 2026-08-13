@@ -5,16 +5,17 @@ import {
   quotaCommand,
   type QuotaContext,
 } from "./commands.js";
+import { validateCommand } from "./orchestrator/command.js";
 import { VERSION } from "./version.js";
 
 export const DESCRIPTION =
   "Report local agent-provider quota windows and model quota evidence.";
 
-export const TOP_HELP = `usage: quota-axi [quota|auth|models] [flags]
-commands[3]:
-  (none)=quota, auth, models
+export const TOP_HELP = `usage: quota-axi [quota|auth|models|validate] [flags]
+commands[4]:
+  (none)=quota, auth, models, validate
 output:
-  Default TOON reports local quota evidence. models is a deterministic data join; --sort runway is explicit opt-in ordering. --tui renders a live human terminal report instead (q quits).
+  Default TOON reports local quota evidence. models is a deterministic data join; --sort runway is explicit opt-in ordering. --tui renders a live human terminal report instead (q quits). validate checks the account registry + policy files.
 flags[11]:
   --provider <claude,codex,cursor,copilot,grok,kimi>, --json, --full, --tui, --refresh <30s-24h>, --once, --allow-keychain-prompt, --intelligence <high|medium|low>, --sort <runway>, --help, -v/--version
 examples:
@@ -29,6 +30,8 @@ examples:
   quota-axi auth
   quota-axi models --intelligence high
   quota-axi models --sort runway
+  quota-axi validate
+  quota-axi validate --json
 `;
 
 type MainOptions = {
@@ -51,13 +54,17 @@ export async function main(options: MainOptions = {}): Promise<void> {
       quota: quotaCommand,
       auth: authCommand,
       models: modelsCommand,
+      validate: validateCommand,
     },
     // `quota` is the implicit default command, so the bare-invocation home view
     // is never reached (see normalizeArgv); wiring it keeps the SDK contract.
     home: quotaCommand,
     resolveContext: () => ({ binPath }),
     getCommandHelp: (command) =>
-      command === "quota" || command === "auth" || command === "models"
+      command === "quota" ||
+      command === "auth" ||
+      command === "models" ||
+      command === "validate"
         ? TOP_HELP
         : undefined,
   });
@@ -95,6 +102,7 @@ export function normalizeArgv(raw: string[]): string[] {
     first === "quota" ||
     first === "auth" ||
     first === "models" ||
+    first === "validate" ||
     first === "update"
   ) {
     return raw;
@@ -139,6 +147,7 @@ function findCommand(raw: string[]): number {
       arg === "quota" ||
       arg === "auth" ||
       arg === "models" ||
+      arg === "validate" ||
       arg === "update"
     ) {
       return index;
