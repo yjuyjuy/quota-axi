@@ -1,5 +1,8 @@
 import {
   compareModelsByRunway,
+  decide,
+  type DecideRequest,
+  type DecisionResponse,
   type ModelQuotaRecord,
   type ModelsResponse,
   type QuotaAxiResponse,
@@ -29,3 +32,12 @@ const models: ModelsResponse = {
 
 void models;
 void compareModelsByRunway(model, model);
+
+const decideRequest: DecideRequest = {
+  registry: { schema_version: 1, accounts: [] },
+  policy: { schema_version: 1, tiers: [] },
+  observations: {},
+  now: quota.generatedAt,
+};
+const decision: DecisionResponse = decide(decideRequest);
+void decision.decisions;

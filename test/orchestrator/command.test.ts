@@ -137,7 +137,7 @@ tiers:
       },
     });
     expect(chunks.join("")).toContain(
-      "usage: quota-axi [quota|auth|models|validate] [flags]",
+      "usage: quota-axi [quota|auth|models|validate|decide] [flags]",
     );
   });
 });
