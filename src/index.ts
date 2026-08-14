@@ -30,4 +30,37 @@ export type {
   PolicyReloadResult,
   PolicyStoreOptions,
 } from "./orchestrator/store.js";
+export {
+  TripwireStore,
+  TRIPWIRE_SCHEMA_VERSION,
+} from "./orchestrator/tripwire-store.js";
+export type {
+  TripwireRecord,
+  TripwireStoreFile,
+  TripwireStoreOptions,
+} from "./orchestrator/tripwire-store.js";
+export {
+  buildSwitchAccountArgs,
+  createJcodeCliSurface,
+  parseSessionList,
+  parseSwitchResult,
+} from "./orchestrator/jcode-surface.js";
+export type {
+  JcodeCliSurfaceOptions,
+  JcodeLiveSession,
+  JcodeSessionSurface,
+  SwitchAccountRequest,
+  SwitchAccountResult,
+  SwitchApplication,
+} from "./orchestrator/jcode-surface.js";
+export {
+  buildRequest as buildSwitchRequest,
+  runSwitch,
+  SWITCH_SCHEMA_VERSION,
+} from "./orchestrator/switch.js";
+export type {
+  RunSwitchOptions,
+  ScopeOutcome,
+  SwitchResponse,
+} from "./orchestrator/switch.js";
 export type * from "./types.js";

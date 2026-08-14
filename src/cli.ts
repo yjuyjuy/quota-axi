@@ -7,18 +7,19 @@ import {
 } from "./commands.js";
 import { validateCommand } from "./orchestrator/command.js";
 import { decideCommand } from "./orchestrator/decide-command.js";
+import { switchCommand } from "./orchestrator/switch-command.js";
 import { VERSION } from "./version.js";
 
 export const DESCRIPTION =
   "Report local agent-provider quota windows and model quota evidence.";
 
-export const TOP_HELP = `usage: quota-axi [quota|auth|models|validate|decide] [flags]
-commands[5]:
-  (none)=quota, auth, models, validate, decide
+export const TOP_HELP = `usage: quota-axi [quota|auth|models|validate|decide|switch] [flags]
+commands[6]:
+  (none)=quota, auth, models, validate, decide, switch
 output:
-  Default TOON reports local quota evidence. models is a deterministic data join; --sort runway is explicit opt-in ordering. --tui renders a live human terminal report instead (q quits). validate checks the account registry + policy files. decide is the pure account-switch decider (ADR 0031 Phase 1): registry + policy + observations in, versioned decision JSON out, zero side effects.
-flags[12]:
-  --provider <claude,codex,cursor,copilot,grok,kimi>, --json, --full, --tui, --refresh <30s-24h>, --once, --allow-keychain-prompt, --intelligence <high|medium|low>, --sort <runway>, --observations <path>, --help, -v/--version
+  Default TOON reports local quota evidence. models is a deterministic data join; --sort runway is explicit opt-in ordering. --tui renders a live human terminal report instead (q quits). validate checks the account registry + policy files. decide is the pure account-switch decider (ADR 0031 Phase 1): registry + policy + observations in, versioned decision JSON out, zero side effects. switch is the ONE mutation verb (ADR 0031 Phase 1): it actuates a decision onto the jcode live-session surface and records tripwire state; --dry-run previews without mutating.
+flags[15]:
+  --provider <claude,codex,cursor,copilot,grok,kimi>, --json, --full, --tui, --refresh <30s-24h>, --once, --allow-keychain-prompt, --intelligence <high|medium|low>, --sort <runway>, --observations <path>, --decision <path>, --dry-run, --recover-after-seconds <n>, --help, -v/--version
 examples:
   quota-axi
   quota-axi --provider claude
@@ -35,6 +36,8 @@ examples:
   quota-axi validate --json
   quota-axi decide --observations ./observations.json
   quota-axi decide --observations ./observations.json --json
+  quota-axi switch --observations ./observations.json --dry-run
+  quota-axi switch --decision ./decision.json --json
 `;
 
 type MainOptions = {
@@ -59,6 +62,7 @@ export async function main(options: MainOptions = {}): Promise<void> {
       models: modelsCommand,
       validate: validateCommand,
       decide: decideCommand,
+      switch: switchCommand,
     },
     // `quota` is the implicit default command, so the bare-invocation home view
     // is never reached (see normalizeArgv); wiring it keeps the SDK contract.
@@ -69,7 +73,8 @@ export async function main(options: MainOptions = {}): Promise<void> {
       command === "auth" ||
       command === "models" ||
       command === "validate" ||
-      command === "decide"
+      command === "decide" ||
+      command === "switch"
         ? TOP_HELP
         : undefined,
   });
@@ -109,6 +114,7 @@ export function normalizeArgv(raw: string[]): string[] {
     first === "models" ||
     first === "validate" ||
     first === "decide" ||
+    first === "switch" ||
     first === "update"
   ) {
     return raw;
@@ -155,6 +161,7 @@ function findCommand(raw: string[]): number {
       arg === "models" ||
       arg === "validate" ||
       arg === "decide" ||
+      arg === "switch" ||
       arg === "update"
     ) {
       return index;

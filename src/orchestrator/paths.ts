@@ -46,6 +46,25 @@ export function policyFilePath(): string {
  * so it is always available as the mechanical fallback.
  */
 export function lastValidPolicyPath(): string {
+  return join(orchestratorCacheDir(), "last-valid-policy.json");
+}
+
+/**
+ * The recorded tripwire store: durable "account exhausted until T" state the
+ * mutating `switch` verb writes when it rotates off a crossed-reserve or
+ * exhausted account. It lives under the cache directory (derived state
+ * quota-axi owns, not a captain-edited input), separate from the config files.
+ * A later `decide` run reads these deadlines back through its observations feed
+ * so a tripped account stays out of selection until its recovery deadline.
+ */
+export function tripwireStorePath(): string {
+  return (
+    process.env.QUOTA_AXI_TRIPWIRES ||
+    join(orchestratorCacheDir(), "tripwires.json")
+  );
+}
+
+function orchestratorCacheDir(): string {
   const base = process.env.XDG_CACHE_HOME || join(homedir(), ".cache");
-  return join(base, "quota-axi", "last-valid-policy.json");
+  return join(base, "quota-axi");
 }
