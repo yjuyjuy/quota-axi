@@ -524,9 +524,10 @@ Auth source entries can include `credentialPresent` when a non-secret probe conf
 
 quota-axi owns two captain-editable declarative files for the fleet account
 orchestrator (ADR 0031). This phase ships their schemas, a `validate`
-subcommand, and hot-reload. It is data only: quota-axi validates and reloads
-these files but never routes, switches accounts, or mutates provider state. The
-mutating decider and `switch` verb are separate later tickets.
+subcommand, hot-reload, the pure `decide` decider, and the fenced `switch`
+actuation verb. `validate` and `decide` are strictly read-only; `switch` is the
+ONE mutation verb and the ONLY writer, the single fence where a decision drives
+provider state (via the jcode live-session surface) and records tripwire state.
 
 Limits are observation-driven, so `plan` is informational only and is never
 used for arithmetic.
@@ -629,6 +630,51 @@ per-session summary. `--registry` and `--policy` point at alternate files.
 Phase 1 builds no cross-provider moves and no model mapping; rotation within the
 Claude pool never changes the model. The precedence and model-map hooks are
 preserved in the shape for Phase 2.
+
+### `switch`
+
+`quota-axi switch` is the fenced mutation verb (ADR 0031, Phase 1): the ONE
+clearly-named actuation verb and the ONLY writer in the whole orchestrator.
+`validate` and `decide` stay strictly read-only; `switch` is the single fence
+where a decision becomes real. It consumes a decision, drives the jcode
+live-session control surface to move each session onto its chosen account, and
+records tripwire state so an exhausted account stays out of future `decide` runs
+until its recovery deadline.
+
+It takes the decision one of two ways:
+
+- `--decision <path>` consumes a decision JSON that `decide` already produced and
+  honors it as-is (no internal decide runs).
+- `--observations <path>` re-runs the pure `decide` internally from the registry,
+  the policy, and per-account telemetry, so `switch` is usable end-to-end in one
+  call. The recorded tripwires are folded into the observations `decide` sees (as
+  `exhaustedUntil`), so a tripped account is kept out; `--registry` and
+  `--policy` point at alternate files.
+
+For each decision whose `action` is `switch`, it actuates the move: the
+`all-sessions` scope becomes a single `--all` switch and a session-id scope
+becomes a per-session switch. It relies on the jcode surface's drain semantics
+(applied immediately when the session is idle, deferred to the session's next
+turn when a turn holds the agent lock) and never interrupts a turn in flight. A
+`keep` or `hold` decision issues no switch. A failed per-scope actuation is
+reported on that scope (`status: failed`) and never aborts the other scopes.
+Phase 1 is account-only: `switch` never sets the jcode `--model`, so rotation
+within the Claude pool never changes the model.
+
+When it rotates a session off a current account because that account was
+exhausted (a crossed reserve floor, a priming gate, or a recorded tripwire), it
+records a tripwire ("exhausted until T") to a `0600` store under the cache
+directory (`tripwires.json`, override with `$QUOTA_AXI_TRIPWIRES` or
+`--tripwires <path>`). `--recover-after-seconds <n>` sets how long that tripwire
+holds the account out (default 24h). A later `decide` run reads that recorded
+state back through its observations feed and keeps the account out until the
+deadline.
+
+`--dry-run` resolves the decision and prints the intended per-scope moves but
+issues no jcode calls and writes no tripwire state, because this is the mutating
+verb and a caller wants to preview it. The result JSON is versioned
+(`schemaVersion`, currently `1`) so downstream callers (firstmate) can pin to it;
+default TOON is a compact per-scope summary, `--json` emits the full result.
 
 ## Security Posture
 
