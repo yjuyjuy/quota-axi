@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { main } from "../../src/cli.js";
+import type { ClaudeHarnessSurface } from "../../src/orchestrator/claude-surface.js";
 import { decideCommand } from "../../src/orchestrator/decide-command.js";
 import type { DecisionResponse } from "../../src/orchestrator/decide.js";
 import type {
@@ -435,6 +436,91 @@ describe("switch command", () => {
     expect(calls).toHaveLength(0);
     expect(store.read()).toEqual({});
     expect(response.outcomes[0].status).toBe("dry-run");
+  });
+
+  it("routes a claude-harness decision through the injected cswap surface", async () => {
+    const paths = scratch();
+    const decision: DecisionResponse = {
+      schemaVersion: 1,
+      generatedAt: "2026-08-14T02:00:00.000Z",
+      provider: "claude",
+      harness: "claude",
+      decisions: [
+        {
+          scope: "all-sessions",
+          action: "switch",
+          chosenAccount: "claude-max-primary",
+          reasons: [{ code: "selected_available" }],
+        },
+      ],
+    };
+    writeFileSync(paths.decision, JSON.stringify(decision));
+
+    const targets: string[] = [];
+    const claudeSurface: ClaudeHarnessSurface = {
+      async switchAccount(target) {
+        targets.push(target);
+        return { status: "applied", target };
+      },
+    };
+    // A jcode surface is injected too, to prove the claude path never touches it.
+    const jcode = recordingSurface();
+    const raw = await switchCommand(
+      ["--decision", paths.decision, "--json"],
+      undefined,
+      {
+        surface: jcode.surface,
+        claudeSurface,
+        tripwireStore: new TripwireStore({ path: paths.tripwires }),
+        now: CONSTANT_NOW,
+      },
+    );
+    const response = JSON.parse(raw) as SwitchResponse;
+    expect(response.harness).toBe("claude");
+    expect(targets).toEqual(["claude-max-primary"]);
+    expect(jcode.calls).toHaveLength(0);
+    expect(response.outcomes[0].status).toBe("applied");
+    expect(response.outcomes[0].claudeActuation?.result).toBe("applied");
+  });
+
+  it("fails closed and exits 1 when a claude switch has no cswap surface", async () => {
+    const paths = scratch();
+    const decision: DecisionResponse = {
+      schemaVersion: 1,
+      generatedAt: "2026-08-14T02:00:00.000Z",
+      provider: "claude",
+      harness: "claude",
+      decisions: [
+        {
+          scope: "all-sessions",
+          action: "switch",
+          chosenAccount: "claude-max-primary",
+          reasons: [{ code: "selected_available" }],
+        },
+      ],
+    };
+    writeFileSync(paths.decision, JSON.stringify(decision));
+
+    // A cswap binary that does not exist: the real adapter reports unavailable,
+    // so the switch fails closed rather than half-switching.
+    const raw = await switchCommand(
+      [
+        "--decision",
+        paths.decision,
+        "--cswap-binary",
+        "/nonexistent/cswap-binary-xyz",
+        "--json",
+      ],
+      undefined,
+      {
+        tripwireStore: new TripwireStore({ path: paths.tripwires }),
+        now: CONSTANT_NOW,
+      },
+    );
+    const response = JSON.parse(raw) as SwitchResponse;
+    expect(response.outcomes[0].status).toBe("failed");
+    expect(response.outcomes[0].error).toMatch(/cswap/);
+    expect(process.exitCode).toBe(1);
   });
 
   it("reports validation issues and exits 1 for a bad registry/policy pair", async () => {

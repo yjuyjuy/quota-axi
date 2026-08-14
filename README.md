@@ -680,6 +680,35 @@ verb and a caller wants to preview it. The result JSON is versioned
 (`schemaVersion`, currently `1`) so downstream callers (firstmate) can pin to it;
 default TOON is a compact per-scope summary, `--json` emits the full result.
 
+#### Claude harness actuation (Phase 2)
+
+A decision whose `harness` is `claude` is actuated differently from the jcode
+harness, because the Claude harness binding is **global**: one account flip
+re-points every live Claude session at once, with near-instant adoption and no
+restarts. `switch` therefore applies a Claude-harness decision as ONE atomic
+flip, not a per-session move, even when the decision carries several session
+scopes (multiple scopes onto the same account collapse to a single flip).
+
+quota-axi does **not** write the Claude credential store itself. The store must
+have exactly one writer, and claude-swap (`cswap`) already owns it and encodes
+the working switch mechanics (backing up and restoring the live login plus
+live-session adoption). So `switch` shells out to
+`cswap switch <target> --json` and never touches the store directly. The
+`<target>` is the decision's chosen account id, which the operator maps to a
+cswap account (an alias, email, or slot number); `--cswap-binary <path>` pins an
+alternate cswap executable.
+
+That cswap switch path makes no Anthropic usage-endpoint call, so it adds nothing
+to the request budget the shared usage cache protects: only cswap's
+`list`/`status`/`auto`/dashboard surfaces poll usage, and those already
+self-coalesce through cswap's own persisted usage store.
+
+If cswap is missing or not runnable, a Claude switch **fails closed**: the scope
+is reported `status: failed` with an actionable message, never a partial or
+silent switch. A cswap handled failure (its JSON error envelope) is likewise a
+failed scope. A `switched: false` direct switch (the target was already active)
+is reported `applied` with a `claudeActuation.result` of `already-active`.
+
 ### `prime`
 
 `quota-axi prime` is the strategy-gated priming pass (ADR 0031, Phase 2).
