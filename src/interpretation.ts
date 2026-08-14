@@ -88,6 +88,8 @@ function semanticsFor(
         provider.state.untrustedWindowIds ?? [],
         generatedAt,
       );
+    case "opencode":
+      return opencodeSemantics(provider.windows, generatedAt);
     case "cursor":
     case "copilot":
       return unknownSemantics(
@@ -264,6 +266,40 @@ function kimiSemantics(
   return knownSemantics(
     effectiveAvailability,
     "Kimi's weekly and five-hour account windows jointly bound every model, so effective remaining is the minimum across the named windows.",
+  );
+}
+
+function opencodeSemantics(
+  windows: QuotaWindow[],
+  generatedAt: string,
+): QuotaSemantics {
+  const account = windows.filter(({ id }) =>
+    ["five_hour", "weekly", "monthly"].includes(id),
+  );
+  const models = windows.filter(({ kind }) => kind === "model");
+  const recognized = new Set([...account, ...models]);
+  const unresolved = windows.filter((window) => !recognized.has(window));
+  if (unresolved.length > 0) {
+    return partialSemantics(
+      unresolved,
+      "OpenCode Go's declared dollar-value account windows jointly bound every model and per-model caps add model-specific bounds, but unfamiliar windows prevent a definitive effective percentage.",
+    );
+  }
+
+  const effectiveAvailability: EffectiveAvailability[] = [];
+  if (account.length > 0) {
+    effectiveAvailability.push(
+      availability("all_models", account, generatedAt),
+    );
+  }
+  for (const model of models) {
+    effectiveAvailability.push(
+      availability(model.id, [...account, model], generatedAt),
+    );
+  }
+  return knownSemantics(
+    effectiveAvailability,
+    "OpenCode Go's declared dollar-value account windows ($12/5h, $30/week, $60/month) jointly bound every model. A per-model monthly cap is an additional bound, so that model's effective remaining percentage is the minimum across the named windows. Windows are declared telemetry: with no readable spend source, observed usage is 0.",
   );
 }
 
