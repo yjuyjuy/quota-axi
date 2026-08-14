@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import type {
+  ClaudeHarnessSurface,
+  ClaudeSwitchOutcome,
+} from "../../src/orchestrator/claude-surface.js";
 import type { DecisionResponse } from "../../src/orchestrator/decide.js";
 import type {
   JcodeSessionSurface,
@@ -354,5 +358,261 @@ describe("runSwitch", () => {
     });
     expect(calls).toHaveLength(0);
     expect(response.outcomes[0].status).toBe("failed");
+  });
+});
+
+function claudeDecision(
+  decisions: DecisionResponse["decisions"],
+): DecisionResponse {
+  return {
+    schemaVersion: 1,
+    generatedAt: "2026-08-14T02:00:00.000Z",
+    provider: "claude",
+    harness: "claude",
+    decisions,
+  };
+}
+
+function fakeClaudeSurface(outcome: (target: string) => ClaudeSwitchOutcome): {
+  surface: ClaudeHarnessSurface;
+  targets: string[];
+} {
+  const targets: string[] = [];
+  const surface: ClaudeHarnessSurface = {
+    async switchAccount(target) {
+      targets.push(target);
+      return outcome(target);
+    },
+  };
+  return { surface, targets };
+}
+
+describe("runSwitch claude harness", () => {
+  it("actuates a claude switch as one atomic cswap flip", async () => {
+    const { surface, targets } = fakeClaudeSurface((target) => ({
+      status: "applied",
+      target,
+      account: { number: 2, email: "b@example.com" },
+    }));
+    const response = await runSwitch({
+      decision: claudeDecision([
+        {
+          scope: "all-sessions",
+          action: "switch",
+          currentAccount: "claude-max-primary",
+          chosenAccount: "claude-team-seat-a",
+          reasons: [{ code: "selected_available" }],
+        },
+      ]),
+      claudeSurface: surface,
+      recordTripwires: () => {},
+      now: NOW,
+      recoverAfterSeconds: 3600,
+    });
+    expect(targets).toEqual(["claude-team-seat-a"]);
+    expect(response.outcomes[0].status).toBe("applied");
+    expect(response.outcomes[0].claudeActuation).toEqual({
+      target: "claude-team-seat-a",
+      result: "applied",
+    });
+  });
+
+  it("reports an already-active flip as applied without a second cswap call", async () => {
+    const { surface, targets } = fakeClaudeSurface((target) => ({
+      status: "already-active",
+      target,
+    }));
+    const response = await runSwitch({
+      decision: claudeDecision([
+        {
+          scope: "all-sessions",
+          action: "switch",
+          chosenAccount: "claude-max-primary",
+          reasons: [{ code: "selected_available" }],
+        },
+      ]),
+      claudeSurface: surface,
+      recordTripwires: () => {},
+      now: NOW,
+      recoverAfterSeconds: 3600,
+    });
+    expect(targets).toEqual(["claude-max-primary"]);
+    expect(response.outcomes[0].status).toBe("applied");
+    expect(response.outcomes[0].claudeActuation?.result).toBe("already-active");
+  });
+
+  it("collapses multiple scopes onto the same account into ONE cswap flip", async () => {
+    const { surface, targets } = fakeClaudeSurface((target) => ({
+      status: "applied",
+      target,
+    }));
+    const response = await runSwitch({
+      decision: claudeDecision([
+        {
+          scope: "session-a",
+          action: "switch",
+          chosenAccount: "claude-team-seat-a",
+          reasons: [{ code: "selected_available" }],
+        },
+        {
+          scope: "session-b",
+          action: "switch",
+          chosenAccount: "claude-team-seat-a",
+          reasons: [{ code: "selected_available" }],
+        },
+      ]),
+      claudeSurface: surface,
+      recordTripwires: () => {},
+      now: NOW,
+      recoverAfterSeconds: 3600,
+    });
+    // The global binding means one flip covers every session, so cswap is
+    // called exactly once even though two scopes asked for the same account.
+    expect(targets).toEqual(["claude-team-seat-a"]);
+    expect(response.outcomes).toHaveLength(2);
+    expect(response.outcomes[0].scope).toBe("session-a");
+    expect(response.outcomes[1].scope).toBe("session-b");
+    expect(response.outcomes.every((o) => o.status === "applied")).toBe(true);
+  });
+
+  it("fails closed when the claude surface is missing (cswap unavailable)", async () => {
+    const recorded: Record<string, TripwireRecord>[] = [];
+    const response = await runSwitch({
+      decision: claudeDecision([
+        {
+          scope: "all-sessions",
+          action: "switch",
+          currentAccount: "claude-max-primary",
+          chosenAccount: "claude-team-seat-a",
+          reasons: [
+            { code: "current_reserve_crossed", account: "claude-max-primary" },
+          ],
+        },
+      ]),
+      recordTripwires: (u) => recorded.push(u),
+      now: NOW,
+      recoverAfterSeconds: 3600,
+    });
+    expect(response.outcomes[0].status).toBe("failed");
+    expect(response.outcomes[0].error).toContain("cswap is unavailable");
+    // A failed switch never rotated off the current account, so no tripwire is
+    // recorded that would wrongly quarantine a still-current account.
+    expect(recorded).toHaveLength(0);
+    expect(response.outcomes[0].recordedTripwire).toBeUndefined();
+  });
+
+  it("surfaces a cswap unavailable outcome as a fail-closed refusal", async () => {
+    const { surface } = fakeClaudeSurface((target) => ({
+      status: "unavailable",
+      target,
+      error: "cswap (`cswap`) is not installed or not on PATH",
+    }));
+    const response = await runSwitch({
+      decision: claudeDecision([
+        {
+          scope: "all-sessions",
+          action: "switch",
+          chosenAccount: "claude-team-seat-a",
+          reasons: [{ code: "selected_available" }],
+        },
+      ]),
+      claudeSurface: surface,
+      recordTripwires: () => {},
+      now: NOW,
+      recoverAfterSeconds: 3600,
+    });
+    expect(response.outcomes[0].status).toBe("failed");
+    expect(response.outcomes[0].error).toContain("not installed");
+  });
+
+  it("surfaces a cswap handled failure as a failed outcome", async () => {
+    const { surface } = fakeClaudeSurface((target) => ({
+      status: "failed",
+      target,
+      error: "Invalid account identifier: nope",
+    }));
+    const response = await runSwitch({
+      decision: claudeDecision([
+        {
+          scope: "all-sessions",
+          action: "switch",
+          chosenAccount: "nope",
+          reasons: [{ code: "selected_available" }],
+        },
+      ]),
+      claudeSurface: surface,
+      recordTripwires: () => {},
+      now: NOW,
+      recoverAfterSeconds: 3600,
+    });
+    expect(response.outcomes[0].status).toBe("failed");
+    expect(response.outcomes[0].error).toBe("Invalid account identifier: nope");
+  });
+
+  it("dry-run issues no cswap flip and records no tripwire", async () => {
+    const { surface, targets } = fakeClaudeSurface((target) => ({
+      status: "applied",
+      target,
+    }));
+    const recorded: Record<string, TripwireRecord>[] = [];
+    const response = await runSwitch({
+      decision: claudeDecision([
+        {
+          scope: "all-sessions",
+          action: "switch",
+          currentAccount: "claude-max-primary",
+          chosenAccount: "claude-team-seat-a",
+          reasons: [
+            { code: "current_reserve_crossed", account: "claude-max-primary" },
+          ],
+        },
+      ]),
+      claudeSurface: surface,
+      recordTripwires: (u) => recorded.push(u),
+      now: NOW,
+      recoverAfterSeconds: 3600,
+      dryRun: true,
+    });
+    expect(targets).toHaveLength(0);
+    expect(recorded).toHaveLength(0);
+    expect(response.outcomes[0].status).toBe("dry-run");
+    expect(response.outcomes[0].recordedTripwire?.account).toBe(
+      "claude-max-primary",
+    );
+  });
+
+  it("records a tripwire for a rotated-off exhausted claude account", async () => {
+    const { surface } = fakeClaudeSurface((target) => ({
+      status: "applied",
+      target,
+    }));
+    const recorded: Record<string, TripwireRecord>[] = [];
+    const response = await runSwitch({
+      decision: claudeDecision([
+        {
+          scope: "all-sessions",
+          action: "switch",
+          currentAccount: "claude-max-primary",
+          chosenAccount: "claude-team-seat-a",
+          reasons: [
+            {
+              code: "current_reserve_crossed",
+              account: "claude-max-primary",
+              detail: { window: "seven_day" },
+            },
+            { code: "selected_available", account: "claude-team-seat-a" },
+          ],
+        },
+      ]),
+      claudeSurface: surface,
+      recordTripwires: (u) => recorded.push(u),
+      now: NOW,
+      recoverAfterSeconds: 3600,
+    });
+    expect(response.outcomes[0].status).toBe("applied");
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]["claude-max-primary"].exhaustedUntil).toBe(
+      "2026-08-14T03:00:00.000Z",
+    );
   });
 });

@@ -1,3 +1,4 @@
+import type { ClaudeHarnessSurface } from "./claude-surface.js";
 import type { DecisionResponse, SessionDecision } from "./decide.js";
 import type {
   JcodeSessionSurface,
@@ -37,6 +38,13 @@ import type { TripwireRecord } from "./tripwire-store.js";
 /** Current switch-result schema version. Downstream callers (firstmate) pin. */
 export const SWITCH_SCHEMA_VERSION = 1;
 
+/**
+ * The harness id whose binding is global and whose credential store is owned by
+ * claude-swap (cswap). A decision for this harness is actuated by ONE atomic
+ * cswap flip that re-points every live Claude session, never per-session.
+ */
+export const CLAUDE_HARNESS = "claude";
+
 /** What `switch` did for one decision scope. */
 export type ScopeOutcome = {
   /** The decision scope: a session id, or `all-sessions`. */
@@ -64,9 +72,18 @@ export type ScopeOutcome = {
   /**
    * The raw per-session outcomes jcode reported for this scope, preserved so a
    * caller sees exactly what the surface said (which session failed, which
-   * deferred). Absent for skipped/dry-run scopes and when the surface threw.
+   * deferred). Absent for skipped/dry-run scopes, the claude harness, and when
+   * the surface threw.
    */
   sessionOutcomes?: SessionSwitchOutcome[];
+  /**
+   * How a claude-harness scope was actuated: the cswap target and whether it
+   * was a fresh flip or already active. Present only for claude-harness scopes.
+   */
+  claudeActuation?: {
+    target: string;
+    result: "applied" | "already-active";
+  };
   /** The tripwire recorded for the rotated-off current account, if any. */
   recordedTripwire?: { account: string; exhaustedUntil: string };
 };
@@ -92,8 +109,17 @@ const EXHAUSTION_REASON_CODES = new Set([
 export type RunSwitchOptions = {
   /** The decision to actuate. */
   decision: DecisionResponse;
-  /** The jcode live-session surface (real adapter or a test fake). */
-  surface: JcodeSessionSurface;
+  /**
+   * The jcode live-session surface (real adapter or a test fake). Required when
+   * the decision harness is jcode; unused for the claude harness.
+   */
+  surface?: JcodeSessionSurface;
+  /**
+   * The claude-harness surface: a cswap-backed adapter (or a test fake) that
+   * drives one atomic global account flip. Required when the decision harness is
+   * `claude`; a missing surface makes a claude switch fail closed.
+   */
+  claudeSurface?: ClaudeHarnessSurface;
   /**
    * Record tripwires for the given accounts. Injected so the core performs no
    * disk I/O itself; the command layer wires this to {@link TripwireStore}.
@@ -119,21 +145,38 @@ export type RunSwitchOptions = {
 export async function runSwitch(
   options: RunSwitchOptions,
 ): Promise<SwitchResponse> {
-  const { decision, surface, now, recoverAfterSeconds } = options;
+  const { decision, now, recoverAfterSeconds } = options;
   const dryRun = options.dryRun ?? false;
+  const isClaude = decision.harness === CLAUDE_HARNESS;
 
   const outcomes: ScopeOutcome[] = [];
   const pendingTripwires: Record<string, TripwireRecord> = {};
 
+  // The claude harness binding is GLOBAL: one cswap flip re-points every live
+  // Claude session. Multiple switch scopes onto the same account must therefore
+  // collapse to ONE atomic flip, not one flip per scope. This memoizes the flip
+  // per target so the second scope reuses the first's outcome.
+  const claudeFlips = new Map<string, Promise<ScopeOutcome>>();
+
   for (const item of decision.decisions) {
-    const outcome = await actuateScope(item, surface, dryRun);
+    const outcome = isClaude
+      ? await actuateClaudeScope(
+          item,
+          options.claudeSurface,
+          dryRun,
+          claudeFlips,
+        )
+      : await actuateScope(item, options.surface, dryRun);
 
     // Record a tripwire on a current account the decision rotated off because
     // it was exhausted, so a later decide keeps it out until recovery. Only for
-    // a real (non-dry) switch that actually left the exhausted account.
+    // a real (non-dry) switch that actually left the exhausted account, and only
+    // when the actuation did not fail (a failed switch never rotated off, so
+    // recording a tripwire would wrongly quarantine a still-current account).
     if (
       item.action === "switch" &&
       item.currentAccount &&
+      outcome.status !== "failed" &&
       decisionLeftExhaustedAccount(item)
     ) {
       const exhaustedUntil = new Date(
@@ -171,7 +214,7 @@ export async function runSwitch(
 
 async function actuateScope(
   item: SessionDecision,
-  surface: JcodeSessionSurface,
+  surface: JcodeSessionSurface | undefined,
   dryRun: boolean,
 ): Promise<ScopeOutcome> {
   const base: ScopeOutcome = {
@@ -198,12 +241,116 @@ async function actuateScope(
 
   if (dryRun) return { ...base, status: "dry-run" };
 
+  // Fail closed when the jcode surface is missing rather than silently skipping.
+  if (surface === undefined) {
+    return {
+      ...base,
+      status: "failed",
+      error: "no jcode surface available to actuate the switch",
+    };
+  }
+
   const request = buildRequest(item.scope, item.chosenAccount);
   try {
     const result = await surface.switchAccount(request);
     return foldSurfaceResult(base, result);
   } catch (error) {
     return { ...base, status: "failed", error: describeError(error) };
+  }
+}
+
+/**
+ * Actuate one decision scope on the claude harness. The binding is global, so a
+ * switch is a single atomic cswap flip onto `chosenAccount`; a second scope
+ * targeting the same account reuses the same in-flight flip (memoized in
+ * `flips`). A missing claude surface (cswap unavailable) fails closed with an
+ * actionable message rather than a partial or silent switch.
+ */
+async function actuateClaudeScope(
+  item: SessionDecision,
+  surface: ClaudeHarnessSurface | undefined,
+  dryRun: boolean,
+  flips: Map<string, Promise<ScopeOutcome>>,
+): Promise<ScopeOutcome> {
+  const base: ScopeOutcome = {
+    scope: item.scope,
+    action: item.action,
+    status: "skipped",
+  };
+  if (item.currentAccount !== undefined)
+    base.currentAccount = item.currentAccount;
+  if (item.chosenAccount !== undefined) base.chosenAccount = item.chosenAccount;
+
+  if (item.action !== "switch") return base;
+
+  if (item.chosenAccount === undefined) {
+    return {
+      ...base,
+      status: "failed",
+      error: "switch decision has no chosenAccount",
+    };
+  }
+
+  if (dryRun) return { ...base, status: "dry-run" };
+
+  const target = item.chosenAccount;
+  // Reuse the atomic global flip for this target if a prior scope already asked
+  // for it: cswap flips every live session at once, so a second call would be a
+  // redundant no-op. The memoized promise carries the same base fields because
+  // the outcome differs only in `scope`.
+  let flip = flips.get(target);
+  if (flip === undefined) {
+    flip = performClaudeFlip(surface, target);
+    flips.set(target, flip);
+  }
+  const flipped = await flip;
+  return { ...flipped, scope: item.scope };
+}
+
+async function performClaudeFlip(
+  surface: ClaudeHarnessSurface | undefined,
+  target: string,
+): Promise<ScopeOutcome> {
+  const base: ScopeOutcome = {
+    scope: "all-sessions",
+    action: "switch",
+    chosenAccount: target,
+    status: "skipped",
+  };
+  // Fail closed: with no cswap-backed surface there is exactly one safe outcome,
+  // a clear refusal, never a partial switch.
+  if (surface === undefined) {
+    return {
+      ...base,
+      status: "failed",
+      error:
+        "cswap is unavailable, so the Claude harness cannot be switched; " +
+        "install claude-swap (cswap) or point --cswap-binary at it",
+    };
+  }
+  let outcome: Awaited<ReturnType<ClaudeHarnessSurface["switchAccount"]>>;
+  try {
+    outcome = await surface.switchAccount(target);
+  } catch (error) {
+    return { ...base, status: "failed", error: describeError(error) };
+  }
+  switch (outcome.status) {
+    case "applied":
+      return {
+        ...base,
+        status: "applied",
+        claudeActuation: { target, result: "applied" },
+      };
+    case "already-active":
+      return {
+        ...base,
+        status: "applied",
+        claudeActuation: { target, result: "already-active" },
+      };
+    case "unavailable":
+      return { ...base, status: "failed", error: outcome.error };
+    case "failed":
+      return { ...base, status: "failed", error: outcome.error };
   }
 }
 
