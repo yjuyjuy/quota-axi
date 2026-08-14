@@ -5,7 +5,8 @@ export type ProviderId =
   | "copilot"
   | "grok"
   | "kimi"
-  | "opencode";
+  | "opencode"
+  | "qoder";
 
 export const PROVIDER_IDS = [
   "claude",
@@ -15,6 +16,7 @@ export const PROVIDER_IDS = [
   "grok",
   "kimi",
   "opencode",
+  "qoder",
 ] as const satisfies readonly ProviderId[];
 
 export type ProviderSource =
