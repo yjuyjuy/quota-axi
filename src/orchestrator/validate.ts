@@ -4,6 +4,7 @@ import {
   type Policy,
   type PolicyPool,
   type PolicyPrimingGate,
+  type PolicyPrimingStrategy,
   type PolicyTier,
   type RegistryAccount,
   type ValidationIssue,
@@ -270,6 +271,12 @@ function validatePolicy(
   const priming = validatePriming(root.priming, issues);
   if (priming === INVALID) ok = false;
 
+  const primingStrategy = validatePrimingStrategy(
+    root.priming_strategy,
+    issues,
+  );
+  if (primingStrategy === INVALID) ok = false;
+
   if (root.model_map !== undefined && asObject(root.model_map) === undefined) {
     issues.push(
       issue(
@@ -291,6 +298,8 @@ function validatePolicy(
   if (captainReserve && captainReserve !== INVALID)
     policy.captain_reserve = captainReserve;
   if (priming && priming !== INVALID) policy.priming = priming;
+  if (primingStrategy && primingStrategy !== INVALID)
+    policy.priming_strategy = primingStrategy;
   if (root.model_map !== undefined) policy.model_map = root.model_map;
   return policy;
 }
@@ -463,6 +472,89 @@ function validatePriming(
   });
 
   return ok ? gates : INVALID;
+}
+
+/**
+ * Validate the optional strategy-gated priming switch (ADR 0031, Phase 2). It
+ * must be a mapping with a boolean `enabled`, an optional boolean
+ * `prefer_real_work`, and an optional non-negative `max_telemetry_age_seconds`.
+ */
+function validatePrimingStrategy(
+  raw: unknown,
+  issues: ValidationIssue[],
+): PolicyPrimingStrategy | undefined | typeof INVALID {
+  if (raw === undefined) return undefined;
+  const record = asObject(raw);
+  if (!record) {
+    issues.push(
+      issue(
+        "policy",
+        "priming_strategy",
+        "invalid_type",
+        "`priming_strategy` must be a mapping object when present.",
+      ),
+    );
+    return INVALID;
+  }
+
+  let ok = true;
+  if (typeof record.enabled !== "boolean") {
+    issues.push(
+      issue(
+        "policy",
+        "priming_strategy.enabled",
+        record.enabled === undefined ? "missing_field" : "invalid_type",
+        "`priming_strategy.enabled` must be a boolean.",
+      ),
+    );
+    ok = false;
+  }
+
+  if (
+    record.prefer_real_work !== undefined &&
+    typeof record.prefer_real_work !== "boolean"
+  ) {
+    issues.push(
+      issue(
+        "policy",
+        "priming_strategy.prefer_real_work",
+        "invalid_type",
+        "`priming_strategy.prefer_real_work` must be a boolean when present.",
+      ),
+    );
+    ok = false;
+  }
+
+  if (
+    record.max_telemetry_age_seconds !== undefined &&
+    !(
+      typeof record.max_telemetry_age_seconds === "number" &&
+      Number.isFinite(record.max_telemetry_age_seconds) &&
+      record.max_telemetry_age_seconds >= 0
+    )
+  ) {
+    issues.push(
+      issue(
+        "policy",
+        "priming_strategy.max_telemetry_age_seconds",
+        "invalid_value",
+        "`priming_strategy.max_telemetry_age_seconds` must be a non-negative number when present.",
+      ),
+    );
+    ok = false;
+  }
+
+  if (!ok) return INVALID;
+  const strategy: PolicyPrimingStrategy = {
+    enabled: record.enabled as boolean,
+  };
+  if (typeof record.prefer_real_work === "boolean") {
+    strategy.prefer_real_work = record.prefer_real_work;
+  }
+  if (typeof record.max_telemetry_age_seconds === "number") {
+    strategy.max_telemetry_age_seconds = record.max_telemetry_age_seconds;
+  }
+  return strategy;
 }
 
 function checkReferentialIntegrity(

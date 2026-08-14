@@ -274,4 +274,55 @@ describe("orchestrator validate", () => {
     expect(result.issues.some((item) => item.file === "registry")).toBe(true);
     expect(result.issues.some((item) => item.file === "policy")).toBe(true);
   });
+
+  it("accepts a valid priming_strategy block (ADR 0031 Phase 2)", () => {
+    const policy = {
+      ...validPolicy(),
+      priming_strategy: {
+        enabled: true,
+        prefer_real_work: true,
+        max_telemetry_age_seconds: 18000,
+      },
+    };
+    const result = validate(ok(validRegistry()), ok(policy));
+    expect(result.valid).toBe(true);
+    expect(result.policy?.priming_strategy).toEqual({
+      enabled: true,
+      prefer_real_work: true,
+      max_telemetry_age_seconds: 18000,
+    });
+  });
+
+  it("accepts an omitted priming_strategy block", () => {
+    const result = validate(ok(validRegistry()), ok(validPolicy()));
+    expect(result.valid).toBe(true);
+    expect(result.policy?.priming_strategy).toBeUndefined();
+  });
+
+  it("rejects a priming_strategy without a boolean enabled", () => {
+    const policy = { ...validPolicy(), priming_strategy: { enabled: "yes" } };
+    const result = validate(ok(validRegistry()), ok(policy));
+    expect(
+      result.issues.some(
+        (item) =>
+          item.path === "priming_strategy.enabled" &&
+          item.code === "invalid_type",
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects a negative max_telemetry_age_seconds", () => {
+    const policy = {
+      ...validPolicy(),
+      priming_strategy: { enabled: true, max_telemetry_age_seconds: -1 },
+    };
+    const result = validate(ok(validRegistry()), ok(policy));
+    expect(
+      result.issues.some(
+        (item) =>
+          item.path === "priming_strategy.max_telemetry_age_seconds" &&
+          item.code === "invalid_value",
+      ),
+    ).toBe(true);
+  });
 });

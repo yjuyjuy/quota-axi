@@ -1,0 +1,19 @@
+{
+  "//": "Example telemetry input for `quota-axi prime` (ADR 0031, Phase 2).",
+  "//provider": "Optional. Phase 2 defaults to claude.",
+  "provider": "claude",
+  "//realWorkPending": "Optional. When true and prefer_real_work is on, needy accounts defer to real-work routing instead of a synthetic ping. Defaults to false (idle fleet).",
+  "realWorkPending": false,
+  "//telemetry": "Per fixed-cost-account priming telemetry keyed by registry account id. `freshness: unknown` (or a missing entry) marks the account for priming. `authVerified` reports whether the local credential is verified. `ageSeconds` is telemetry age; at or beyond the strategy's max_telemetry_age_seconds it is stale. `windows` (remaining-percent per window id) drives only the real-work routing preference.",
+  "telemetry": {
+    "claude-max-primary": {
+      "freshness": "unknown"
+    },
+    "claude-pro-personal": {
+      "freshness": "known",
+      "authVerified": true,
+      "ageSeconds": 300,
+      "windows": { "five_hour": 72, "seven_day": 55 }
+    }
+  }
+}
