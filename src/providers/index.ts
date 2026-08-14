@@ -5,6 +5,7 @@ import { cursorAdapter } from "./cursor.js";
 import { grokAdapter } from "./grok.js";
 import { kimiAdapter } from "./kimi.js";
 import { opencodeAdapter } from "./opencode.js";
+import { qoderAdapter } from "./qoder.js";
 import {
   PROVIDER_IDS,
   type ProviderAdapter,
@@ -19,6 +20,7 @@ export const PROVIDERS: Record<ProviderId, ProviderAdapter> = {
   grok: grokAdapter,
   kimi: kimiAdapter,
   opencode: opencodeAdapter,
+  qoder: qoderAdapter,
 };
 
 export function parseProviders(value: string | undefined): ProviderId[] {

@@ -47,6 +47,7 @@ describe("CLI flag parsing", () => {
       "grok",
       "kimi",
       "opencode",
+      "qoder",
     ]);
   });
 
@@ -75,6 +76,7 @@ describe("CLI flag parsing", () => {
           "grok",
           "kimi",
           "opencode",
+          "qoder",
         ],
         json: true,
         full: true,
