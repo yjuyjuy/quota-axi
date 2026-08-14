@@ -88,6 +88,8 @@ function semanticsFor(
         provider.state.untrustedWindowIds ?? [],
         generatedAt,
       );
+    case "qoder":
+      return qoderSemantics(provider.windows, generatedAt);
     case "cursor":
     case "copilot":
       return unknownSemantics(
@@ -264,6 +266,30 @@ function kimiSemantics(
   return knownSemantics(
     effectiveAvailability,
     "Kimi's weekly and five-hour account windows jointly bound every model, so effective remaining is the minimum across the named windows.",
+  );
+}
+
+function qoderSemantics(
+  windows: QuotaWindow[],
+  generatedAt: string,
+): QuotaSemantics {
+  const monthly = windows.filter(({ id }) => id === "monthly");
+  const recognized = new Set(monthly);
+  const unresolved = windows.filter((window) => !recognized.has(window));
+  if (unresolved.length > 0) {
+    return partialSemantics(
+      unresolved,
+      "Qoder's declared monthly credit window bounds every premium model, but unfamiliar windows prevent a definitive effective percentage.",
+    );
+  }
+
+  const effectiveAvailability =
+    monthly.length > 0
+      ? [availability("all_models", monthly, generatedAt)]
+      : [];
+  return knownSemantics(
+    effectiveAvailability,
+    "Qoder's declared monthly premium-model credit window bounds every model, so effective remaining is that window's remaining percentage. It is declared telemetry: with no readable balance source, observed usage is 0, and stacked Credit Packs would raise the same window's budget without changing its identity.",
   );
 }
 

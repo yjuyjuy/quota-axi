@@ -1,6 +1,6 @@
 ---
 name: quota-axi
-description: "Report local Claude, Codex, Cursor, GitHub Copilot, Grok, and Kimi quota windows via the quota-axi CLI - remaining effective usable runway, percentages, reset times, cycle-average pace vs the reset clock, and provider status read from local auth sources, with no routing, provider mutation, or default ordering preference. Use before deciding whether it is safe to keep spending a provider's quota, when the user asks about usage, rate limits, pace, or remaining quota, or when comparing local provider headroom."
+description: "Report local Claude, Codex, Cursor, GitHub Copilot, Grok, Kimi, and Qoder quota windows via the quota-axi CLI - remaining effective usable runway, percentages, reset times, cycle-average pace vs the reset clock, and provider status read from local auth sources, with no routing, provider mutation, or default ordering preference. Use before deciding whether it is safe to keep spending a provider's quota, when the user asks about usage, rate limits, pace, or remaining quota, or when comparing local provider headroom."
 user-invocable: false
 author: Kun Chen (kunchenguid)
 metadata:
@@ -16,6 +16,7 @@ metadata:
         copilot,
         grok,
         kimi,
+        qoder,
         cli,
       ]
     category: observability
@@ -100,13 +101,13 @@ or when comparing supported local provider headroom side by side.
 ## Usage
 
 ```
-usage: quota-axi [quota|auth|models|validate|decide] [flags]
-commands[5]:
-  (none)=quota, auth, models, validate, decide
+usage: quota-axi [quota|auth|models|validate|decide|switch] [flags]
+commands[6]:
+  (none)=quota, auth, models, validate, decide, switch
 output:
-  Default TOON reports local quota evidence. models is a deterministic data join; --sort runway is explicit opt-in ordering. --tui renders a live human terminal report instead (q quits). validate checks the account registry + policy files. decide is the pure account-switch decider (ADR 0031 Phase 1): registry + policy + observations in, versioned decision JSON out, zero side effects.
-flags[12]:
-  --provider <claude,codex,cursor,copilot,grok,kimi>, --json, --full, --tui, --refresh <30s-24h>, --once, --allow-keychain-prompt, --intelligence <high|medium|low>, --sort <runway>, --observations <path>, --help, -v/--version
+  Default TOON reports local quota evidence. models is a deterministic data join; --sort runway is explicit opt-in ordering. --tui renders a live human terminal report instead (q quits). validate checks the account registry + policy files. decide is the pure account-switch decider (ADR 0031 Phase 1): registry + policy + observations in, versioned decision JSON out, zero side effects. switch is the ONE mutation verb (ADR 0031 Phase 1): it actuates a decision onto the jcode live-session surface and records tripwire state; --dry-run previews without mutating.
+flags[15]:
+  --provider <claude,codex,cursor,copilot,grok,kimi>, --json, --full, --tui, --refresh <30s-24h>, --once, --allow-keychain-prompt, --intelligence <high|medium|low>, --sort <runway>, --observations <path>, --decision <path>, --dry-run, --recover-after-seconds <n>, --help, -v/--version
 examples:
   quota-axi
   quota-axi --provider claude
@@ -123,6 +124,8 @@ examples:
   quota-axi validate --json
   quota-axi decide --observations ./observations.json
   quota-axi decide --observations ./observations.json --json
+  quota-axi switch --observations ./observations.json --dry-run
+  quota-axi switch --decision ./decision.json --json
 ```
 
 ## Tips
