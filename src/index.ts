@@ -49,9 +49,9 @@ export type {
   JcodeCliSurfaceOptions,
   JcodeLiveSession,
   JcodeSessionSurface,
+  SessionSwitchOutcome,
   SwitchAccountRequest,
   SwitchAccountResult,
-  SwitchApplication,
 } from "./orchestrator/jcode-surface.js";
 export {
   buildRequest as buildSwitchRequest,

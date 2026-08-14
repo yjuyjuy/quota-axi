@@ -90,7 +90,16 @@ function recordingSurface(): {
     },
     async switchAccount(request): Promise<SwitchAccountResult> {
       calls.push(request);
-      return { application: "applied" };
+      return {
+        outcomes: [
+          {
+            sessionId: request.all ? "some-session" : (request.session ?? ""),
+            ok: true,
+            account: request.account,
+            deferred: false,
+          },
+        ],
+      };
     },
   };
   return { surface, calls };

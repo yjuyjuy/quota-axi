@@ -1,8 +1,9 @@
 import type { DecisionResponse, SessionDecision } from "./decide.js";
 import type {
   JcodeSessionSurface,
+  SessionSwitchOutcome,
   SwitchAccountRequest,
-  SwitchApplication,
+  SwitchAccountResult,
 } from "./jcode-surface.js";
 import type { TripwireRecord } from "./tripwire-store.js";
 
@@ -47,16 +48,25 @@ export type ScopeOutcome = {
   /** The account the scope was moved onto; absent for keep/hold. */
   chosenAccount?: string;
   /**
-   * The actuation outcome:
-   *   - `applied`: the jcode surface applied the move immediately.
-   *   - `deferred`: the move was deferred to the session's next turn (drain).
+   * The actuation outcome, folded across every per-session outcome jcode
+   * reported for this scope:
+   *   - `applied`: every reported session applied the move immediately.
+   *   - `deferred`: at least one session was deferred to its next turn (drain),
+   *     and none failed.
    *   - `skipped`: no switch was needed (a `keep` or `hold` decision).
-   *   - `failed`: the actuation failed; see `error`.
+   *   - `failed`: the surface call threw, or at least one session reported
+   *     `ok: false`; see `error`.
    *   - `dry-run`: a switch that would have been issued but was previewed only.
    */
   status: "applied" | "deferred" | "skipped" | "failed" | "dry-run";
   /** The failure reason, present only when `status` is `failed`. */
   error?: string;
+  /**
+   * The raw per-session outcomes jcode reported for this scope, preserved so a
+   * caller sees exactly what the surface said (which session failed, which
+   * deferred). Absent for skipped/dry-run scopes and when the surface threw.
+   */
+  sessionOutcomes?: SessionSwitchOutcome[];
   /** The tripwire recorded for the rotated-off current account, if any. */
   recordedTripwire?: { account: string; exhaustedUntil: string };
 };
@@ -191,13 +201,56 @@ async function actuateScope(
   const request = buildRequest(item.scope, item.chosenAccount);
   try {
     const result = await surface.switchAccount(request);
-    return {
-      ...base,
-      status: result.application === "deferred" ? "deferred" : "applied",
-    };
+    return foldSurfaceResult(base, result);
   } catch (error) {
     return { ...base, status: "failed", error: describeError(error) };
   }
+}
+
+/**
+ * Fold jcode's per-session outcomes into one scope outcome. Any session that
+ * reported `ok: false` fails the scope (carrying that session's error); with no
+ * failure, a deferred session makes the scope `deferred`, otherwise `applied`.
+ * An empty outcome array (jcode matched no live session) is a failure rather
+ * than a false `applied`, so a no-op switch is never reported as success. The
+ * raw per-session outcomes are preserved on the scope outcome.
+ */
+function foldSurfaceResult(
+  base: ScopeOutcome,
+  result: SwitchAccountResult,
+): ScopeOutcome {
+  const outcomes = result.outcomes;
+  const withOutcomes: ScopeOutcome =
+    outcomes.length > 0 ? { ...base, sessionOutcomes: outcomes } : { ...base };
+
+  if (outcomes.length === 0) {
+    return {
+      ...withOutcomes,
+      status: "failed",
+      error: "jcode reported no session outcomes for the switch",
+    };
+  }
+
+  const failed = outcomes.filter((outcome) => !outcome.ok);
+  if (failed.length > 0) {
+    return {
+      ...withOutcomes,
+      status: "failed",
+      error: describeSessionFailures(failed),
+    };
+  }
+
+  const deferred = outcomes.some((outcome) => outcome.deferred);
+  return { ...withOutcomes, status: deferred ? "deferred" : "applied" };
+}
+
+function describeSessionFailures(failed: SessionSwitchOutcome[]): string {
+  return failed
+    .map((outcome) => {
+      const id = outcome.sessionId || "(unknown)";
+      return outcome.error ? `${id}: ${outcome.error}` : `${id}: failed`;
+    })
+    .join("; ");
 }
 
 /**
@@ -229,6 +282,3 @@ function describeError(error: unknown): string {
   if (error instanceof Error) return error.message;
   return String(error);
 }
-
-/** Re-exported for callers building surfaces around the drain contract. */
-export type { SwitchApplication };

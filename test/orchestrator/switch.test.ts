@@ -21,10 +21,25 @@ function fakeSurface(
     async switchAccount(request) {
       calls.push(request);
       if (overrides.switchAccount) return overrides.switchAccount(request);
-      return { application: "applied" };
+      return appliedFor(request);
     },
   };
   return { surface, calls };
+}
+
+/** A clean applied outcome for whichever scope the request targets. */
+function appliedFor(request: SwitchAccountRequest): SwitchAccountResult {
+  const sessionId = request.all ? "some-session" : (request.session ?? "");
+  return {
+    outcomes: [
+      {
+        sessionId,
+        ok: true,
+        account: request.account,
+        deferred: false,
+      },
+    ],
+  };
 }
 
 function decision(decisions: DecisionResponse["decisions"]): DecisionResponse {
@@ -142,7 +157,7 @@ describe("runSwitch", () => {
         if (request.session === "session-a") {
           throw new Error("jcode surface offline");
         }
-        return { application: "applied" };
+        return appliedFor(request);
       },
     });
     const response = await runSwitch({
@@ -169,6 +184,91 @@ describe("runSwitch", () => {
     expect(response.outcomes[0].status).toBe("failed");
     expect(response.outcomes[0].error).toContain("jcode surface offline");
     expect(response.outcomes[1].status).toBe("applied");
+  });
+
+  it("fails a scope when jcode reports a per-session ok:false, carrying its error", async () => {
+    const { surface } = fakeSurface({
+      switchAccount: async (request) => ({
+        outcomes: [
+          {
+            sessionId: request.session ?? "",
+            ok: false,
+            deferred: false,
+            error: "unknown account",
+          },
+        ],
+      }),
+    });
+    const response = await runSwitch({
+      decision: decision([
+        {
+          scope: "session-a",
+          action: "switch",
+          chosenAccount: "claude-max-primary",
+          reasons: [{ code: "selected_available" }],
+        },
+      ]),
+      surface,
+      recordTripwires: () => {},
+      now: NOW,
+      recoverAfterSeconds: 3600,
+    });
+    expect(response.outcomes[0].status).toBe("failed");
+    expect(response.outcomes[0].error).toContain("unknown account");
+    expect(response.outcomes[0].sessionOutcomes?.[0].ok).toBe(false);
+  });
+
+  it("reports a deferred scope when jcode defers the switch to the next turn", async () => {
+    const { surface } = fakeSurface({
+      switchAccount: async (request) => ({
+        outcomes: [
+          {
+            sessionId: request.session ?? "",
+            ok: true,
+            account: request.account,
+            deferred: true,
+          },
+        ],
+      }),
+    });
+    const response = await runSwitch({
+      decision: decision([
+        {
+          scope: "session-a",
+          action: "switch",
+          chosenAccount: "claude-max-primary",
+          reasons: [{ code: "selected_available" }],
+        },
+      ]),
+      surface,
+      recordTripwires: () => {},
+      now: NOW,
+      recoverAfterSeconds: 3600,
+    });
+    expect(response.outcomes[0].status).toBe("deferred");
+    expect(response.outcomes[0].sessionOutcomes?.[0].deferred).toBe(true);
+  });
+
+  it("fails a scope when jcode matches no live session (empty outcomes)", async () => {
+    const { surface } = fakeSurface({
+      switchAccount: async () => ({ outcomes: [] }),
+    });
+    const response = await runSwitch({
+      decision: decision([
+        {
+          scope: "session-a",
+          action: "switch",
+          chosenAccount: "claude-max-primary",
+          reasons: [{ code: "selected_available" }],
+        },
+      ]),
+      surface,
+      recordTripwires: () => {},
+      now: NOW,
+      recoverAfterSeconds: 3600,
+    });
+    expect(response.outcomes[0].status).toBe("failed");
+    expect(response.outcomes[0].error).toContain("no session outcomes");
   });
 
   it("records a tripwire when it rotates off an exhausted current account", async () => {

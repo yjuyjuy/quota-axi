@@ -6,12 +6,19 @@ import { execFileText } from "../lib/process.js";
  *
  * `switch` actuates account moves by driving the jcode CLI as a subprocess:
  * `jcode session list --json` enumerates live sessions, and
- * `jcode session switch-account [--all] [--session <id>] [--model <m>] --json`
- * applies a move with drain semantics (applied immediately when the session is
- * idle, deferred to the session's next turn when a turn holds the agent lock,
- * never interrupting it). This module owns the process boundary and pins to the
- * CLI's `--json` contract; the interface is the seam unit tests mock so they
- * never shell out to a real jcode.
+ * `jcode session switch-account [<SESSION>] [--all] --account <A> [--model <M>]
+ * --json` applies a move with drain semantics (applied immediately when the
+ * session is idle, deferred to the session's next turn when a turn holds the
+ * agent lock, never interrupting it). This module owns the process boundary and
+ * pins to the CLI's real merged `--json` contract; the interface is the seam
+ * unit tests mock so they never shell out to a real jcode.
+ *
+ * The `--json` shapes here match the merged jcode master surface (jcode PR #22):
+ * `session list --json` emits a bare array of `session_id`-keyed rows, and
+ * `session switch-account --json` emits a bare array of per-session outcomes
+ * carrying `ok`, `deferred`, and `error`. The adapter preserves that per-session
+ * fidelity so the switch core can report real failures and the applied/deferred
+ * distinction rather than collapsing them.
  *
  * Phase 1 is account-only: {@link SwitchAccountRequest.model} exists so the
  * shape is ready for the Phase 2 model map, but the `switch` core never sets it
@@ -20,16 +27,20 @@ import { execFileText } from "../lib/process.js";
  * invariant is enforced by the caller, not hidden here.
  */
 
-/** One live session as `jcode session list --json` reports it. */
+/** One live session as `jcode session list --json` reports it (`SessionListRow`). */
 export type JcodeLiveSession = {
-  /** Session id. */
+  /** Session id (jcode `session_id`). */
   id: string;
+  /** Optional human-readable session name. */
+  name?: string;
   /** Provider the session runs on, for example `claude`. */
   provider?: string;
   /** Account the session currently runs on. */
   account?: string;
   /** Model the session currently runs on. */
   model?: string;
+  /** Whether the session is currently processing a turn. */
+  isProcessing?: boolean;
 };
 
 /** A request to move sessions onto a target account. */
@@ -47,15 +58,32 @@ export type SwitchAccountRequest = {
   model?: string;
 };
 
-/** How the jcode surface applied a switch, per its drain semantics. */
-export type SwitchApplication = "applied" | "deferred";
+/**
+ * One per-session outcome from `jcode session switch-account --json`
+ * (`SessionSwitchOutcome`). `ok` is true when the switch applied OR was
+ * accepted-and-queued; `deferred` is true when it was accepted but deferred to
+ * the session's next turn (a turn was in flight); `error` carries the failure
+ * reason when `ok` is false.
+ */
+export type SessionSwitchOutcome = {
+  /** Session id the outcome is about (jcode `session_id`). */
+  sessionId: string;
+  /** True when the switch applied or was accepted-and-queued. */
+  ok: boolean;
+  /** Account now targeted, when jcode reports it. */
+  account?: string;
+  /** Model now targeted, present only when a model switch was requested. */
+  model?: string;
+  /** True when accepted but deferred to the session's next turn. */
+  deferred: boolean;
+  /** Failure reason, present when `ok` is false. */
+  error?: string;
+};
 
-/** The `jcode session switch-account --json` result for one request. */
+/** The `jcode session switch-account --json` result: per-session outcomes. */
 export type SwitchAccountResult = {
-  /** Whether the move applied immediately or was deferred to the next turn. */
-  application: SwitchApplication;
-  /** Session ids the surface reported as affected, when it names them. */
-  sessions?: string[];
+  /** The per-session outcomes jcode reported, in order. */
+  outcomes: SessionSwitchOutcome[];
 };
 
 /**
@@ -73,17 +101,20 @@ export type JcodeSessionSurface = {
 /**
  * Build the argv for `jcode session switch-account`. Kept pure and exported so
  * a test can assert the account-only invariant directly: Phase 1 never passes
- * `--model`, and `--all` and `--session` are mutually exclusive.
+ * `--model`. The single-session form passes the session as a POSITIONAL argument
+ * (the real CLI shape); `--all` switches every session and is mutually exclusive
+ * with a positional session.
  */
 export function buildSwitchAccountArgs(
   request: SwitchAccountRequest,
 ): string[] {
-  const args = ["session", "switch-account", "--account", request.account];
+  const args = ["session", "switch-account"];
   if (request.all) {
     args.push("--all");
   } else if (request.session !== undefined) {
-    args.push("--session", request.session);
+    args.push(request.session);
   }
+  args.push("--account", request.account);
   if (request.model !== undefined) {
     args.push("--model", request.model);
   }
@@ -133,56 +164,57 @@ export function createJcodeCliSurface(
   };
 }
 
-/** Parse `jcode session list --json`. Tolerant of a bare array or `{sessions}`. */
+/**
+ * Parse `jcode session list --json`: a bare array of `session_id`-keyed rows
+ * (`SessionListRow`). A row without a string `session_id` is dropped.
+ */
 export function parseSessionList(raw: string): JcodeLiveSession[] {
   const value = safeJson(raw);
-  const list = Array.isArray(value)
-    ? value
-    : value &&
-        typeof value === "object" &&
-        Array.isArray((value as { sessions?: unknown }).sessions)
-      ? (value as { sessions: unknown[] }).sessions
-      : [];
+  const list = Array.isArray(value) ? value : [];
   const out: JcodeLiveSession[] = [];
   for (const entry of list) {
     if (entry === null || typeof entry !== "object") continue;
     const record = entry as Record<string, unknown>;
-    const id = record.id ?? record.session ?? record.sessionId;
+    const id = record.session_id;
     if (typeof id !== "string") continue;
     const session: JcodeLiveSession = { id };
+    if (typeof record.name === "string") session.name = record.name;
     if (typeof record.provider === "string") session.provider = record.provider;
     if (typeof record.account === "string") session.account = record.account;
     if (typeof record.model === "string") session.model = record.model;
+    if (typeof record.is_processing === "boolean") {
+      session.isProcessing = record.is_processing;
+    }
     out.push(session);
   }
   return out;
 }
 
-/** Parse `jcode session switch-account --json`. Maps its status to application. */
+/**
+ * Parse `jcode session switch-account --json`: a bare array of per-session
+ * outcomes (`SessionSwitchOutcome`). Each carries `session_id`, `ok`,
+ * `deferred`, and an optional `error`/`account`/`model`.
+ */
 export function parseSwitchResult(raw: string): SwitchAccountResult {
   const value = safeJson(raw);
-  const record =
-    value && typeof value === "object" && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : {};
-  const status =
-    typeof record.status === "string"
-      ? record.status
-      : typeof record.application === "string"
-        ? record.application
-        : undefined;
-  const application: SwitchApplication =
-    status === "deferred" || status === "queued" || status === "pending"
-      ? "deferred"
-      : "applied";
-  const result: SwitchAccountResult = { application };
-  if (Array.isArray(record.sessions)) {
-    const sessions = record.sessions.filter(
-      (item): item is string => typeof item === "string",
-    );
-    if (sessions.length > 0) result.sessions = sessions;
+  const list = Array.isArray(value) ? value : [];
+  const outcomes: SessionSwitchOutcome[] = [];
+  for (const entry of list) {
+    if (entry === null || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    const sessionId =
+      typeof record.session_id === "string" ? record.session_id : "";
+    const outcome: SessionSwitchOutcome = {
+      sessionId,
+      ok: record.ok === true,
+      deferred: record.deferred === true,
+    };
+    if (typeof record.account === "string") outcome.account = record.account;
+    if (typeof record.model === "string") outcome.model = record.model;
+    if (typeof record.error === "string") outcome.error = record.error;
+    outcomes.push(outcome);
   }
-  return result;
+  return { outcomes };
 }
 
 function safeJson(raw: string): unknown {
