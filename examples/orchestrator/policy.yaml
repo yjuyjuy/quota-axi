@@ -35,3 +35,20 @@ priming:
   - window: seven_day
     resume_at_percent_remaining: 20
     accounts: [claude-max-primary]
+
+# Strategy-gated priming pass (ADR 0031, Phase 2). Priming keeps fixed-cost
+# accounts primed: auth verified and telemetry fresh within one window cycle.
+# It ONLY verifies auth and freshens telemetry; it never advances or resets any
+# provider reset clock.
+#
+# `enabled` is the master gate: with priming off (or this block absent) there is
+# ZERO synthetic traffic. When on, `prefer_real_work` (default true) routes real
+# work to under-used fixed-cost accounts first, so the minimal read-only
+# synthetic ping is the last resort, issued only when the fleet is idle.
+# `max_telemetry_age_seconds` is the staleness threshold and synthetic-ping
+# cadence; it defaults to the shortest window cycle (5h = 18000s) so telemetry
+# never goes stale.
+priming_strategy:
+  enabled: true
+  prefer_real_work: true
+  max_telemetry_age_seconds: 18000

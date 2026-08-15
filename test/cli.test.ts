@@ -672,7 +672,7 @@ describe("CLI plumbing via the axi SDK", () => {
   it("prints the top-level help for --help", async () => {
     const output = await capture(["--help"]);
     expect(output).toContain(
-      "usage: quota-axi [quota|auth|models|validate|decide|switch] [flags]",
+      "usage: quota-axi [quota|auth|models|validate|decide|switch|prime] [flags]",
     );
     expect(process.exitCode).toBeUndefined();
   });
@@ -680,7 +680,7 @@ describe("CLI plumbing via the axi SDK", () => {
   it("prints the top-level help for legacy -h", async () => {
     const output = await capture(["auth", "-h"]);
     expect(output).toContain(
-      "usage: quota-axi [quota|auth|models|validate|decide|switch] [flags]",
+      "usage: quota-axi [quota|auth|models|validate|decide|switch|prime] [flags]",
     );
     expect(process.exitCode).toBeUndefined();
   });

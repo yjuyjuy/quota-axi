@@ -572,9 +572,12 @@ pools within a tier are preferred. Each tier has a unique `name` and non-empty
 `pools[]`; each pool lists registry `accounts` and optional per-window
 `min_reserve` floors. Optional top-level `captain_reserve` (window id → percent)
 and `priming[]` gates (`window`, `resume_at_percent_remaining`, optional
-`accounts`) complete the schema. The Phase 2 model map slots in later as an
-additive optional `model_map` field without a breaking change; Phase 1 only
-requires it to be a mapping object if present.
+`accounts`) complete the schema. An optional top-level `priming_strategy` block
+(`enabled` boolean, optional `prefer_real_work` boolean, optional
+`max_telemetry_age_seconds` number) gates the Phase 2 priming pass (see
+[`prime`](#prime)). The Phase 2 model map slots in later as an additive optional
+`model_map` field without a breaking change; Phase 1 only requires it to be a
+mapping object if present.
 
 ### `validate`
 
@@ -676,6 +679,49 @@ issues no jcode calls and writes no tripwire state, because this is the mutating
 verb and a caller wants to preview it. The result JSON is versioned
 (`schemaVersion`, currently `1`) so downstream callers (firstmate) can pin to it;
 default TOON is a compact per-scope summary, `--json` emits the full result.
+
+### `prime`
+
+`quota-axi prime` is the strategy-gated priming pass (ADR 0031, Phase 2).
+Priming keeps every fixed-cost account primed - auth verified and telemetry
+fresh within one window cycle - because a flat-rate account that sits idle is
+wasted capacity, and stale telemetry on it means the pure `decide` cannot trust
+its state when routing.
+
+Honest rationale (ADR 0031, critical): priming ONLY verifies auth and freshens
+telemetry. It is NOT claimed to advance or reset any provider reset clock, and
+no reset-clock-advancing behavior is built. Anthropic's support-documented reset
+semantics do not support that claim.
+
+Priming is strictly gated by `policy.priming_strategy.enabled`. With priming OFF
+(the block absent or `enabled: false`) there is ZERO synthetic traffic: every
+account is reported `disabled` and no ping is issued. When priming is ON:
+
+- `prefer_real_work` (default `true`) expresses a `decide`-style preference: when
+  real work is pending, an account that needs priming defers to real-work routing
+  (`prime-via-real-work`), so no synthetic ping is issued. The command reports a
+  `routePreference` ranking fixed-cost accounts by headroom (most under-used
+  first), so a caller routes real work to under-used fixed-cost accounts and
+  keeps them fresh without synthetic traffic.
+- Only when the fleet is idle (or `prefer_real_work: false`) is the minimal
+  synthetic ping the last resort (`prime-via-synthetic`).
+
+The synthetic ping is the cheapest safe call per provider: the provider's own
+read-only usage read, routed through the SAME Phase 1 shared usage cache the
+`quota` command uses, so priming adds no second fetch path and spends no model
+tokens. Its cadence aligns to the shortest window cycle (`max_telemetry_age_seconds`,
+default `18000` = 5h) so telemetry never goes stale. The command reports the
+chosen `synthetic` call and its safety rationale per provider. The ping never
+mutates a credential store, records no tripwire, and never routes or switches.
+
+Telemetry is supplied as a `--telemetry <path>` JSON file (per fixed-cost-account
+`freshness`, `authVerified`, `ageSeconds`, and optional `windows`), mirroring how
+`decide` and `switch` take observations, because a live per-account fetch would
+require resolving each account's distinct credential. `--dry-run` previews the
+intended pings and issues none. `syntheticPingsIssued` is always `0` whenever the
+gate is off or the run is a dry run. The result JSON is versioned (`schemaVersion`,
+currently `1`); default TOON is a compact per-account summary, `--json` emits the
+full result plus the route preference and synthetic-call catalog.
 
 ## Security Posture
 

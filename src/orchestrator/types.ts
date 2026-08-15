@@ -94,6 +94,42 @@ export type PolicyPrimingGate = {
 };
 
 /**
+ * The strategy-gated priming switch (ADR 0031, Phase 2).
+ *
+ * Priming keeps fixed-cost accounts primed - auth verified and telemetry fresh
+ * within one window cycle - because an idle flat-rate account is wasted
+ * capacity. `enabled` is the master gate: when it is false or the whole
+ * `priming_strategy` block is absent, priming does nothing and issues ZERO
+ * synthetic traffic.
+ *
+ * Honest rationale (ADR 0031): priming verifies auth and freshens telemetry. It
+ * is NOT claimed to advance or reset any provider reset clock. The synthetic
+ * ping is the cheapest safe read-only usage read, routed through the Phase 1
+ * shared usage cache; it never spends model quota and never touches a reset
+ * clock.
+ */
+export type PolicyPrimingStrategy = {
+  /**
+   * Master gate. When false (or the block is absent), priming is off and there
+   * is ZERO synthetic traffic.
+   */
+  enabled: boolean;
+  /**
+   * Prefer routing real work to under-used fixed-cost accounts before any
+   * synthetic ping, so a synthetic ping is the last resort rather than the
+   * default. Defaults to true.
+   */
+  prefer_real_work?: boolean;
+  /**
+   * Telemetry at or beyond this age (seconds) is stale and triggers priming.
+   * Defaults to the shortest window cycle (five hours) so telemetry never goes
+   * stale. This doubles as the synthetic-ping cadence: prime when telemetry is
+   * older than this.
+   */
+  max_telemetry_age_seconds?: number;
+};
+
+/**
  * The declarative policy file (captain/agent-editable). The Phase 2 model map
  * slots in additively as an optional `model_map` field without breaking this
  * schema; it is intentionally NOT built in Phase 1.
@@ -106,6 +142,8 @@ export type Policy = {
   captain_reserve?: WindowReserveFloors;
   /** Priming gates evaluated by the decider. */
   priming?: PolicyPrimingGate[];
+  /** The strategy-gated priming switch (ADR 0031, Phase 2). */
+  priming_strategy?: PolicyPrimingStrategy;
   /**
    * Reserved for Phase 2 (per-provider model equivalents plus a required
    * default model per provider). Present here only so the field name is
