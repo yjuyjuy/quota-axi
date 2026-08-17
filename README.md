@@ -850,6 +850,17 @@ pnpm run dev                    # Run the CLI with tsx
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the no-mistakes PR workflow, generated-file rules, and release-please conventions.
 
+## Fork improvements
+
+This fork ([yjuyjuy/quota-axi](https://github.com/yjuyjuy/quota-axi)) extends upstream ([kunchenguid/quota-axi](https://github.com/kunchenguid/quota-axi)) with the following.
+
+- **Account-switch orchestrator** adds a captain-editable **registry and declarative policy** with a hot-reloading `validate` command, so account rules live in reviewed YAML.
+- **Pure account-switch decider** exposes a side-effect-free `decide` command that names the account per session with a full reason chain.
+- **Fenced `switch` verb** is the one mutation path, actuating jcode live sessions with drain semantics, tripwires, and a `--dry-run` guard.
+- **Strategy-gated priming** keeps fixed-cost accounts authenticated and telemetry-fresh through the `prime` command, issuing zero synthetic pings when disabled.
+- **Shared single-flight usage cache** coalesces callers to about one upstream fetch per provider per TTL, with backoff and age-degraded trust.
+- **OpenCode Go provider** reports its declared dollar-value quota windows so a signed-in OpenCode plan shows up in every report.
+
 ## License
 
 MIT
