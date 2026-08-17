@@ -74,6 +74,7 @@ const ACCENTS: Record<ProviderId, StyleSpec> = {
   grok: { rgb: [180, 190, 254], ansi16: "95", bold: true },
   kimi: { rgb: [245, 194, 231], ansi16: "95", bold: true },
   opencode: { rgb: [166, 227, 161], ansi16: "92", bold: true },
+  qoder: { rgb: [137, 180, 250], ansi16: "94", bold: true },
 };
 
 const STYLES: Record<Exclude<StyleName, `accent:${ProviderId}`>, StyleSpec> = {
