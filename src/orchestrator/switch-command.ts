@@ -3,6 +3,10 @@ import { AxiError } from "axi-sdk-js";
 import { collapseHome, readJsonFileResult } from "../lib/fs.js";
 import { nowIso } from "../lib/time.js";
 import {
+  createCswapSurface,
+  type ClaudeHarnessSurface,
+} from "./claude-surface.js";
+import {
   decide,
   type AccountObservation,
   type DecideRequest,
@@ -14,8 +18,8 @@ import {
   type JcodeSessionSurface,
 } from "./jcode-surface.js";
 import { policyFilePath, registryFilePath } from "./paths.js";
-import { runSwitch, type SwitchResponse } from "./switch.js";
-import { TripwireStore } from "./tripwire-store.js";
+import { CLAUDE_HARNESS, runSwitch, type SwitchResponse } from "./switch.js";
+import { TripwireStore, type TripwireRecord } from "./tripwire-store.js";
 import { validate } from "./validate.js";
 import { readYamlFile } from "./yaml.js";
 
@@ -54,6 +58,7 @@ export type SwitchFlags = {
   decisionPath?: string;
   tripwiresPath?: string;
   jcodeBinary?: string;
+  cswapBinary?: string;
   recoverAfterSeconds: number;
 };
 
@@ -66,6 +71,7 @@ export function parseSwitchFlags(args: string[]): SwitchFlags {
   let decisionPath: string | undefined;
   let tripwiresPath: string | undefined;
   let jcodeBinary: string | undefined;
+  let cswapBinary: string | undefined;
   let recoverAfterSeconds: number | undefined;
 
   for (let index = 0; index < args.length; index++) {
@@ -114,6 +120,9 @@ export function parseSwitchFlags(args: string[]): SwitchFlags {
       case "--jcode-binary":
         jcodeBinary = value;
         break;
+      case "--cswap-binary":
+        cswapBinary = value;
+        break;
       case "--recover-after-seconds":
         recoverAfterSeconds = parseRecoverAfter(value);
         break;
@@ -142,12 +151,18 @@ export function parseSwitchFlags(args: string[]): SwitchFlags {
   if (decisionPath !== undefined) flags.decisionPath = decisionPath;
   if (tripwiresPath !== undefined) flags.tripwiresPath = tripwiresPath;
   if (jcodeBinary !== undefined) flags.jcodeBinary = jcodeBinary;
+  if (cswapBinary !== undefined) flags.cswapBinary = cswapBinary;
   return flags;
 }
 
 export type SwitchCommandDeps = {
   /** The jcode surface; injected for tests. Defaults to the real CLI adapter. */
   surface?: JcodeSessionSurface;
+  /**
+   * The claude-harness surface; injected for tests. Defaults to the real
+   * cswap-backed adapter. Used only when the decision harness is `claude`.
+   */
+  claudeSurface?: ClaudeHarnessSurface;
   /** The tripwire store; injected for tests. Defaults to the on-disk store. */
   tripwireStore?: TripwireStore;
   /** The clock; injected for tests. Defaults to wall-clock ISO. */
@@ -175,20 +190,37 @@ export async function switchCommand(
       : renderErrorToon(resolved.error);
   }
 
-  const surface =
-    deps.surface ??
-    createJcodeCliSurface(
-      flags.jcodeBinary ? { binary: flags.jcodeBinary } : {},
-    );
-
-  const response = await runSwitch({
+  // Route on the decision harness: the claude harness is a global cswap flip,
+  // every other harness drives the jcode live-session surface. Only the surface
+  // the decision needs is constructed, so a claude switch never spawns jcode and
+  // a jcode switch never spawns cswap.
+  const isClaude = resolved.decision.harness === CLAUDE_HARNESS;
+  const runOptions = {
     decision: resolved.decision,
-    surface,
-    recordTripwires: (updates) => tripwireStore.record(updates),
+    recordTripwires: (updates: Record<string, TripwireRecord>) =>
+      tripwireStore.record(updates),
     now,
     recoverAfterSeconds: flags.recoverAfterSeconds,
     dryRun: flags.dryRun,
-  });
+  };
+
+  const response = isClaude
+    ? await runSwitch({
+        ...runOptions,
+        claudeSurface:
+          deps.claudeSurface ??
+          createCswapSurface(
+            flags.cswapBinary ? { binary: flags.cswapBinary } : {},
+          ),
+      })
+    : await runSwitch({
+        ...runOptions,
+        surface:
+          deps.surface ??
+          createJcodeCliSurface(
+            flags.jcodeBinary ? { binary: flags.jcodeBinary } : {},
+          ),
+      });
 
   if (response.outcomes.some((outcome) => outcome.status === "failed")) {
     process.exitCode = 1;
@@ -384,6 +416,9 @@ function renderSwitchToon(
     current: outcome.currentAccount ?? "(none)",
     chosen: outcome.chosenAccount ?? "(none)",
     status: outcome.status,
+    actuation: outcome.claudeActuation
+      ? `cswap:${outcome.claudeActuation.result}`
+      : "",
     tripwire: outcome.recordedTripwire
       ? `${outcome.recordedTripwire.account}@${outcome.recordedTripwire.exhaustedUntil}`
       : "(none)",
@@ -410,6 +445,7 @@ const VALUE_FLAGS = new Set([
   "--decision",
   "--tripwires",
   "--jcode-binary",
+  "--cswap-binary",
   "--recover-after-seconds",
 ]);
 

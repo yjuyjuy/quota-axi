@@ -3,7 +3,11 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { commandExists, terminateChild } from "../../src/lib/process.js";
+import {
+  commandExists,
+  execFileCapture,
+  terminateChild,
+} from "../../src/lib/process.js";
 
 const originalPath = process.env.PATH;
 const originalPathExt = process.env.PATHEXT;
@@ -36,6 +40,43 @@ describe("commandExists", () => {
 
     expect(await commandExists(command)).toBe(true);
     expect(await commandExists("quota-axi-missing")).toBe(false);
+  });
+});
+
+describe("execFileCapture", () => {
+  it.skipIf(process.platform === "win32")(
+    "captures stdout and a non-zero exit without rejecting",
+    async () => {
+      const result = await execFileCapture(
+        "/bin/sh",
+        ["-c", "printf '%s' hello; exit 3"],
+        5_000,
+      );
+      expect(result.stdout).toBe("hello");
+      expect(result.code).toBe(3);
+      expect(result.killed).toBe(false);
+    },
+    10_000,
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "captures a clean exit",
+    async () => {
+      const result = await execFileCapture(
+        "/bin/sh",
+        ["-c", "printf ok"],
+        5_000,
+      );
+      expect(result.stdout).toBe("ok");
+      expect(result.code).toBe(0);
+    },
+    10_000,
+  );
+
+  it("rejects when the binary cannot be spawned at all (ENOENT)", async () => {
+    await expect(
+      execFileCapture("quota-axi-nonexistent-binary-xyz", [], 5_000),
+    ).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
 

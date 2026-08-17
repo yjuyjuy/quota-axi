@@ -24,6 +24,67 @@ export function execFileText(
   });
 }
 
+/** The captured result of a subprocess run, including its exit status. */
+export type ExecFileCapture = {
+  stdout: string;
+  stderr: string;
+  /** Numeric exit code, or null when the process was killed by a signal. */
+  code: number | null;
+  /** True when the process was terminated (timeout or signal). */
+  killed: boolean;
+};
+
+/**
+ * Run a subprocess and capture stdout/stderr AND its exit status, without
+ * rejecting on a non-zero exit. This is required for tools like cswap that
+ * emit a machine-readable JSON error envelope on stdout together with a
+ * non-zero exit code: {@link execFileText} discards that stdout, this does not.
+ *
+ * The promise rejects only when the binary cannot be spawned at all (for
+ * example `ENOENT`: the command is missing) or the run is killed (timeout),
+ * so a caller can distinguish "tool not present / not runnable" from "tool ran
+ * and reported a structured failure".
+ */
+export function execFileCapture(
+  command: string,
+  args: string[],
+  timeoutMs: number,
+): Promise<ExecFileCapture> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      command,
+      args,
+      { timeout: timeoutMs, maxBuffer: 1024 * 1024 },
+      (error, stdout, stderr) => {
+        if (error) {
+          const spawnCode = (error as NodeJS.ErrnoException).code;
+          const killed = Boolean((error as { killed?: boolean }).killed);
+          // A spawn failure (missing binary, permission) or a kill (timeout)
+          // is a genuine "could not run" and rejects. A numeric exit code
+          // means the process ran and exited non-zero: resolve with output.
+          if (typeof spawnCode === "string" || killed) {
+            reject(error);
+            return;
+          }
+          resolve({
+            stdout: String(stdout),
+            stderr: String(stderr),
+            code: typeof error.code === "number" ? error.code : null,
+            killed: false,
+          });
+          return;
+        }
+        resolve({
+          stdout: String(stdout),
+          stderr: String(stderr),
+          code: 0,
+          killed: false,
+        });
+      },
+    );
+  });
+}
+
 export async function commandExists(command: string): Promise<boolean> {
   return (await findCommandPath(command)) !== undefined;
 }
