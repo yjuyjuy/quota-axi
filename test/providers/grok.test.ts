@@ -413,7 +413,10 @@ describe("Grok consumer quota acquisition", () => {
     writeValidAuth();
     const fetchMock = stubSuccessfulFetch();
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result).toMatchObject({
       source: "web",
@@ -445,7 +448,10 @@ describe("Grok consumer quota acquisition", () => {
       vi.fn(async () => grpcResponse(consumerPayload(), { raw: true })),
     );
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result).toMatchObject({
       source: "web",
@@ -469,7 +475,10 @@ describe("Grok consumer quota acquisition", () => {
       vi.fn(async () => new Response(body)),
     );
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result).toMatchObject({
       source: "unavailable",
@@ -497,7 +506,10 @@ describe("Grok consumer quota acquisition", () => {
         ),
       );
 
-      const result = await fetchQuota({ allowKeychainPrompt: false });
+      const result = await fetchQuota({
+        allowKeychainPrompt: false,
+        refreshCredentials: false,
+      });
 
       expect(result.state).toMatchObject({ status, error });
       expect(result.state.error).not.toContain("private-provider-diagnostic");
@@ -531,7 +543,10 @@ describe("Grok consumer quota acquisition", () => {
         ),
       );
 
-      const result = await fetchQuota({ allowKeychainPrompt: false });
+      const result = await fetchQuota({
+        allowKeychainPrompt: false,
+        refreshCredentials: false,
+      });
 
       expect(result.state).toMatchObject({
         status: "auth_required",
@@ -552,7 +567,10 @@ describe("Grok consumer quota acquisition", () => {
       ),
     );
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state).toMatchObject({
       status: "error",
@@ -570,7 +588,10 @@ describe("Grok consumer quota acquisition", () => {
       ),
     );
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state).toMatchObject({
       status: "error",
@@ -601,7 +622,10 @@ describe("Grok consumer quota acquisition", () => {
       },
     });
 
-    const pending = adapter.fetchQuota({ allowKeychainPrompt: false });
+    const pending = adapter.fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
     await Promise.resolve();
     await vi.advanceTimersByTimeAsync(15_000);
     const result = await pending;
@@ -625,7 +649,10 @@ describe("Grok consumer quota acquisition", () => {
       ),
     );
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state.status).toBe("rate_limited");
     expect(result.state.error).toBe("Grok quota endpoint rate limited");
@@ -643,7 +670,10 @@ describe("Grok consumer quota acquisition", () => {
       vi.fn(async () => new Response("private-body", { status: httpStatus })),
     );
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state).toMatchObject({ status, error });
     expect(result.state.error).not.toContain("private-body");
@@ -668,7 +698,10 @@ describe("Grok consumer quota acquisition", () => {
     process.env.PATH = binDir;
     stubSuccessfulFetch();
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state.status).toBe("fresh");
     expect(existsSync(marker)).toBe(false);
@@ -690,7 +723,10 @@ describe("Grok auth discovery", () => {
     });
     const fetchMock = stubSuccessfulFetch();
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state.status).toBe("fresh");
     expect(result.account?.email).toBe("person@example.invalid");
@@ -720,7 +756,10 @@ describe("Grok auth discovery", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(result).toMatchObject({
@@ -754,7 +793,7 @@ describe("Grok auth discovery", () => {
     });
     const fetchMock = stubSuccessfulFetch();
 
-    await fetchQuota({ allowKeychainPrompt: false });
+    await fetchQuota({ allowKeychainPrompt: false, refreshCredentials: false });
 
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
       headers: expect.objectContaining({ Authorization: "Bearer session-key" }),
@@ -774,7 +813,10 @@ describe("Grok auth discovery", () => {
     });
     const fetchMock = stubSuccessfulFetch();
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.account).toMatchObject({
       email: "person@example.invalid",
@@ -797,7 +839,10 @@ describe("Grok auth discovery", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state.status).toBe("auth_required");
     expect(fetchMock).not.toHaveBeenCalled();
@@ -816,7 +861,7 @@ describe("Grok auth discovery", () => {
     );
     const fetchMock = stubSuccessfulFetch();
 
-    await fetchQuota({ allowKeychainPrompt: false });
+    await fetchQuota({ allowKeychainPrompt: false, refreshCredentials: false });
 
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
       headers: expect.objectContaining({ Authorization: "Bearer home-key" }),
@@ -846,7 +891,7 @@ describe("Grok auth discovery", () => {
     );
     const fetchMock = stubSuccessfulFetch();
 
-    await fetchQuota({ allowKeychainPrompt: false });
+    await fetchQuota({ allowKeychainPrompt: false, refreshCredentials: false });
 
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
       headers: expect.objectContaining({ Authorization: "Bearer path-key" }),
@@ -863,7 +908,7 @@ describe("Grok auth discovery", () => {
     });
     const fetchMock = stubSuccessfulFetch();
 
-    await fetchQuota({ allowKeychainPrompt: false });
+    await fetchQuota({ allowKeychainPrompt: false, refreshCredentials: false });
 
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
       headers: expect.objectContaining({ Authorization: "Bearer inline-key" }),
@@ -905,7 +950,10 @@ describe("Grok expired access-token classification", () => {
     const authPath = process.env.GROK_AUTH_JSON!;
     const before = readFileSync(authPath);
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result).toMatchObject({
       source: "unavailable",
@@ -961,7 +1009,10 @@ describe("Grok expired access-token classification", () => {
     });
     const fetchMock = stubSuccessfulFetch();
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result).toMatchObject({
       source: "web",
@@ -1007,7 +1058,10 @@ describe("Grok expired access-token classification", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(result).toMatchObject({
@@ -1040,7 +1094,10 @@ describe("Grok expired access-token classification", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result).toMatchObject({
       source: "unavailable",
@@ -1069,7 +1126,10 @@ describe("Grok expired access-token classification", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result).toMatchObject({
       source: "unavailable",
@@ -1109,7 +1169,10 @@ describe("Grok expired access-token classification", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result).toMatchObject({
       source: "cache",
@@ -1148,7 +1211,10 @@ describe("Grok expired access-token classification", () => {
       },
     });
     writeCachedProviders([cachedGrok("web")]);
-    vi.stubGlobal("fetch", vi.fn());
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => grpcResponse(new Uint8Array(), { status: 403 })),
+    );
 
     const jsonText = await captureCli(["--provider", "grok", "--json"]);
     const json = JSON.parse(jsonText) as QuotaAxiResponse;
@@ -1156,7 +1222,6 @@ describe("Grok expired access-token classification", () => {
 
     expect(grok).toMatchObject({
       provider: "grok",
-      source: "cache",
       state: {
         status: "stale",
         stale: true,
@@ -1167,6 +1232,8 @@ describe("Grok expired access-token classification", () => {
       },
     });
     expect(grok.attempts).toBeUndefined();
+    // `source` is a default-tier demotion, not a loss: `--full` still has it.
+    expect(grok.source).toBeUndefined();
     expect(grok.quotaSemantics).toMatchObject({
       status: "unknown",
       effectiveAvailability: [
@@ -1181,7 +1248,7 @@ describe("Grok expired access-token classification", () => {
       grok.quotaSemantics?.effectiveAvailability[0]?.effectivePercentRemaining,
     ).toBeUndefined();
     expect(json.help).toContain(
-      "Tell your user: open the Grok CLI (`grok`) once so it can refresh Grok's local session token. quota-axi does not refresh credentials.",
+      "Tell your user: run `grok` once so the Grok CLI can refresh its own session token. quota-axi delegates that refresh to the Grok CLI and never rotates credentials itself.",
     );
 
     const fullText = await captureCli([
@@ -1191,13 +1258,12 @@ describe("Grok expired access-token classification", () => {
       "--full",
     ]);
     const full = JSON.parse(fullText) as QuotaAxiResponse;
-    // The probe of the stored-expired session failed transiently (no
-    // definitive rejection), so the stored expired classification stands.
+    expect(full.providers[0]?.source).toBe("cache");
     expect(full.providers[0]?.attempts).toEqual([
       {
         source: "web",
         status: "failed",
-        error: "Grok quota unavailable",
+        error: "Grok sign-in required",
       },
       {
         source: "pi:xai",
@@ -1206,50 +1272,162 @@ describe("Grok expired access-token classification", () => {
       },
     ]);
 
+    // The remedy rides the provider's `attention[]` row; soft expiry keeps its
+    // positive auth fact because the scope produces no `quota[]` row.
     const toon = await captureCli(["--provider", "grok"]);
-    expect(toon).toContain("advice[1]{provider,reason,remedyCommand}:");
-    expect(toon).toContain("grok,credentials_expired,grok");
-    expect(toon).toMatch(/grok,unknown,cache,stale,expired_refreshable/);
+    expect(toon).toContain(
+      'grok,all,stale,"last refreshed 2026-07-20T00:00:00.000Z · Grok access token expired · reason credentials_expired (auth expired_refreshable)",grok',
+    );
+    expect(toon).toContain("grok,all_products,headroom_unknown,credits,none");
   });
 });
 
 describe("Grok dual-source CLI and Pi xAI usability", () => {
-  it("treats valid Pi xAI oauth as usable when Grok CLI auth is missing", async () => {
+  it("fetches grok.com consumer credits with a valid Pi xAI oauth token", async () => {
     writeValidPiXaiOauth();
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+    const fetchMock = stubSuccessfulFetch();
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
-
-    expect(result).toMatchObject({
-      source: "unavailable",
-      windows: [],
-      state: {
-        status: "unavailable",
-        error: "Grok consumer quota unavailable",
-        authStatus: "usable",
-      },
-      attempts: [
-        {
-          source: "auth-json",
-          status: "skipped",
-          error: "credentials_missing",
-        },
-        {
-          source: "pi:xai",
-          status: "skipped",
-          error: "model_auth_only",
-          credentialPresent: true,
-        },
-      ],
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
     });
-    expect(result.state.status).not.toBe("auth_required");
-    expect(result.state.error).not.toMatch(/sign-in/i);
-    expect(fetchMock).not.toHaveBeenCalled();
+
+    expect(result.state.status).toBe("fresh");
+    expect(result.state.authStatus).toBe("usable");
+    expect(result.source).toBe("web");
+    expect(result.windows.length).toBeGreaterThan(0);
+    expect(result.attempts).toEqual([
+      {
+        source: "auth-json",
+        status: "skipped",
+        error: "credentials_missing",
+      },
+      {
+        source: "pi:xai",
+        status: "success",
+        credentialPresent: true,
+      },
+    ]);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toContain("GetGrokCreditsConfig");
+    expect((init.headers as Record<string, string>).Authorization).toBe(
+      "Bearer pi-xai-access-token-fixture",
+    );
     expect(JSON.stringify(result)).not.toContain("pi-xai-access-token-fixture");
     expect(JSON.stringify(result)).not.toContain(
       "pi-xai-refresh-token-fixture",
     );
+  });
+
+  it("reports a definitively rejected Pi oauth token as signed out", async () => {
+    writeValidPiXaiOauth();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => grpcResponse(new Uint8Array(), { status: 403 })),
+    );
+
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+
+    expect(result.state).toMatchObject({
+      status: "auth_required",
+      authStatus: "unusable",
+      error: "Grok sign-in required",
+    });
+    expect(result.attempts).toContainEqual({
+      source: "pi:xai",
+      status: "failed",
+      error: "Grok sign-in required",
+      credentialPresent: true,
+    });
+  });
+
+  it("preserves usable auth for a transient valid Pi oauth failure", async () => {
+    writeValidPiXaiOauth();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("network unavailable");
+      }),
+    );
+
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+
+    expect(result.state.authStatus).toBe("usable");
+    expect(result.state.status).toBe("error");
+    expect(result.state.error).toBe("Grok quota unavailable");
+  });
+
+  it("tries Pi oauth after a transient CLI quota failure", async () => {
+    writeValidAuth("cli-transient-token");
+    writeValidPiXaiOauth();
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const authorization = (
+        init?.headers as Record<string, string> | undefined
+      )?.Authorization;
+      if (authorization === "Bearer cli-transient-token") {
+        throw new TypeError("network unavailable");
+      }
+      return grpcResponse(consumerPayload());
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+
+    expect(result.state.status).toBe("fresh");
+    expect(result.source).toBe("web");
+    expect(result.attempts).toEqual([
+      { source: "web", status: "failed", error: "Grok quota unavailable" },
+      { source: "pi:xai", status: "success", credentialPresent: true },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("tries a stored-expired CLI bearer independently of transient Pi oauth", async () => {
+    writeAuth({
+      "https://auth.x.ai::fixture-client": {
+        key: "accepted-expired-cli-token",
+        auth_mode: "oidc",
+        expires_at: "2020-01-01T00:00:00.000Z",
+        refresh_token: "fixture-refresh-token",
+      },
+    });
+    writeValidPiXaiOauth();
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const authorization = (
+        init?.headers as Record<string, string> | undefined
+      )?.Authorization;
+      if (authorization === "Bearer pi-xai-access-token-fixture") {
+        throw new TypeError("network unavailable");
+      }
+      return grpcResponse(consumerPayload());
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+
+    expect(result.state.status).toBe("fresh");
+    expect(result.source).toBe("web");
+    expect(result.attempts).toContainEqual({
+      source: "web",
+      status: "success",
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("treats valid Pi xAI api_key as usable when Grok CLI auth is expired refreshable", async () => {
@@ -1272,7 +1450,10 @@ describe("Grok dual-source CLI and Pi xAI usability", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state.authStatus).toBe("usable");
     expect(result.state.status).toBe("unavailable");
@@ -1300,11 +1481,231 @@ describe("Grok dual-source CLI and Pi xAI usability", () => {
     expect(JSON.stringify(result)).not.toContain("fixture-refresh-token");
   });
 
+  it("emits grok CLI refresh advice for a refreshable CLI session whether Pi is present or hidden", async () => {
+    const grokRefreshHelp =
+      "Tell your user: run `grok` once so the Grok CLI can refresh its own session token. quota-axi delegates that refresh to the Grok CLI and never rotates credentials itself.";
+
+    async function cliAdvice(pi: "present" | "hidden"): Promise<{
+      grok: QuotaAxiResponse["providers"][number] | undefined;
+      help: string[] | undefined;
+      toon: string;
+    }> {
+      writeAuth({
+        "https://auth.x.ai::fixture-client": {
+          key: "expired-access-token",
+          auth_mode: "oidc",
+          expires_at: "2020-01-01T00:00:00.000Z",
+          refresh_token: "fixture-refresh-token",
+        },
+      });
+      const piAuthPath = join(process.env.PI_CODING_AGENT_DIR!, "auth.json");
+      if (pi === "present") {
+        writePiXaiAuth({
+          xai: {
+            type: "api_key",
+            key: "pi-xai-api-key-fixture-value",
+          },
+        });
+      } else if (existsSync(piAuthPath)) {
+        rmSync(piAuthPath);
+      }
+      writeCachedProviders([cachedGrok("web")]);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => grpcResponse(new Uint8Array(), { status: 403 })),
+      );
+
+      const json = JSON.parse(
+        await captureCli(["--provider", "grok", "--json"]),
+      ) as QuotaAxiResponse;
+      return {
+        grok: json.providers[0],
+        help: json.help,
+        toon: await captureCli(["--provider", "grok"]),
+      };
+    }
+
+    const hidden = await cliAdvice("hidden");
+    const present = await cliAdvice("present");
+
+    expect(hidden.grok?.state.authStatus).toBe("expired_refreshable");
+    expect(present.grok?.state.authStatus).toBe("usable");
+    for (const result of [hidden, present]) {
+      expect(result.grok?.state.status).toBe("stale");
+      expect(result.grok?.state.reason).toBe("credentials_expired");
+      expect(result.grok?.state.remedyCommand).toBe("grok");
+      expect(result.help).toContain(grokRefreshHelp);
+      expect(result.toon).toContain(
+        `grok,all,stale,"last refreshed 2026-07-20T00:00:00.000Z · ${result.grok?.state.error} · reason credentials_expired (auth ${result.grok?.state.authStatus})",grok`,
+      );
+    }
+  });
+
+  it("does not emit grok refresh advice when Pi oauth fetches grok.com credits", async () => {
+    writeAuth({
+      "https://auth.x.ai::fixture-client": {
+        key: "expired-access-token",
+        auth_mode: "oidc",
+        expires_at: "2020-01-01T00:00:00.000Z",
+        refresh_token: "fixture-refresh-token",
+      },
+    });
+    writeValidPiXaiOauth();
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const authorization = (
+        init?.headers as Record<string, string> | undefined
+      )?.Authorization;
+      return authorization === "Bearer pi-xai-access-token-fixture"
+        ? grpcResponse(consumerPayload())
+        : grpcResponse(new Uint8Array(), { status: 403 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const json = JSON.parse(
+      await captureCli(["--provider", "grok", "--json"]),
+    ) as QuotaAxiResponse;
+    const grok = json.providers[0];
+
+    expect(grok?.state.status).toBe("fresh");
+    expect(grok?.state.authStatus).toBe("usable");
+    expect(grok?.state.remedyCommand).toBeUndefined();
+    expect(json.help?.join("\n") ?? "").not.toContain("open the Grok CLI");
+  });
+
+  it("emits grok refresh advice when neither the CLI session nor Pi oauth can fetch credits", async () => {
+    writeAuth({
+      "https://auth.x.ai::fixture-client": {
+        key: "expired-access-token",
+        auth_mode: "oidc",
+        expires_at: "2020-01-01T00:00:00.000Z",
+        refresh_token: "fixture-refresh-token",
+      },
+    });
+    writeValidPiXaiOauth();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => grpcResponse(new Uint8Array(), { status: 403 })),
+    );
+
+    const json = JSON.parse(
+      await captureCli(["--provider", "grok", "--json"]),
+    ) as QuotaAxiResponse;
+    const grok = json.providers[0];
+
+    expect(grok?.state.status).not.toBe("fresh");
+    expect(grok?.state.remedyCommand).toBe("grok");
+    expect(json.help).toContain(
+      "Tell your user: run `grok` once so the Grok CLI can refresh its own session token. quota-axi delegates that refresh to the Grok CLI and never rotates credentials itself.",
+    );
+  });
+
+  it("does not emit Grok refresh advice for a transient CLI failure", async () => {
+    writeAuth({
+      "https://auth.x.ai::fixture-client": {
+        key: "expired-access-token",
+        auth_mode: "oidc",
+        expires_at: "2020-01-01T00:00:00.000Z",
+        refresh_token: "fixture-refresh-token",
+      },
+    });
+    writePiXaiAuth({
+      xai: {
+        type: "api_key",
+        key: "pi-xai-api-key-fixture-value",
+      },
+    });
+    writeCachedProviders([cachedGrok("web")]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("fetch failed");
+      }),
+    );
+
+    const json = JSON.parse(
+      await captureCli(["--provider", "grok", "--json"]),
+    ) as QuotaAxiResponse;
+    const grok = json.providers[0];
+
+    expect(grok?.state.status).toBe("stale");
+    expect(grok?.state.authStatus).toBe("usable");
+    expect(grok?.state.reason).toBeUndefined();
+    expect(grok?.state.remedyCommand).toBeUndefined();
+    expect(json.help?.join("\n") ?? "").not.toContain("open the Grok CLI");
+  });
+
+  it("does not combine rejection and refreshability across CLI candidates", async () => {
+    writeAuth({
+      "https://auth.x.ai::rejected-client": {
+        key: "rejected-access-token",
+        auth_mode: "oidc",
+        expires_at: "2099-01-01T00:00:00.000Z",
+      },
+      "https://auth.x.ai::transient-client": {
+        key: "transient-access-token",
+        auth_mode: "oidc",
+        expires_at: "2020-01-01T00:00:00.000Z",
+        refresh_token: "fixture-refresh-token",
+      },
+    });
+    writePiXaiAuth({
+      xai: {
+        type: "api_key",
+        key: "pi-xai-api-key-fixture-value",
+      },
+    });
+    writeCachedProviders([cachedGrok("web")]);
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(grpcResponse(new Uint8Array(), { status: 403 }))
+        .mockRejectedValueOnce(new TypeError("fetch failed")),
+    );
+
+    const json = JSON.parse(
+      await captureCli(["--provider", "grok", "--json"]),
+    ) as QuotaAxiResponse;
+    const grok = json.providers[0];
+
+    expect(grok?.state.status).toBe("stale");
+    expect(grok?.state.authStatus).toBe("usable");
+    expect(grok?.state.reason).toBeUndefined();
+    expect(grok?.state.remedyCommand).toBeUndefined();
+    expect(json.help?.join("\n") ?? "").not.toContain("open the Grok CLI");
+  });
+
+  it("reports Pi oauth as unneeded when the CLI bearer succeeds", async () => {
+    writeValidAuth("cli-only-key");
+    writeValidPiXaiOauth();
+    const fetchMock = stubSuccessfulFetch();
+
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+
+    expect(result.state.status).toBe("fresh");
+    expect(result.attempts).toEqual([
+      { source: "web", status: "success" },
+      {
+        source: "pi:xai",
+        status: "skipped",
+        error: "quota_not_needed",
+        credentialPresent: true,
+      },
+    ]);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it("keeps Grok CLI consumer quota when Pi xAI auth is missing", async () => {
     writeValidAuth("cli-only-key");
     const fetchMock = stubSuccessfulFetch();
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state.status).toBe("fresh");
     expect(result.state.authStatus).toBe("usable");
@@ -1339,7 +1740,10 @@ describe("Grok dual-source CLI and Pi xAI usability", () => {
     });
     vi.stubGlobal("fetch", vi.fn());
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result).toMatchObject({
       state: {
@@ -1351,7 +1755,7 @@ describe("Grok dual-source CLI and Pi xAI usability", () => {
     expect(result.state.status).not.toBe("auth_required");
   });
 
-  it("probes a stored-expired Pi xAI token and reports usable model auth when it is live", async () => {
+  it("fetches grok.com consumer credits with a stored-expired Pi xAI oauth token that is still accepted", async () => {
     writePiXaiAuth({
       xai: {
         type: "oauth",
@@ -1360,16 +1764,16 @@ describe("Grok dual-source CLI and Pi xAI usability", () => {
         expires: Date.now() - 60_000,
       },
     });
-    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
+    const fetchMock = stubSuccessfulFetch();
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
+    expect(result.state.status).toBe("fresh");
     expect(result.state.authStatus).toBe("usable");
-    expect(result.state.status).toBe("unavailable");
-    expect(result.state.error).toBe("Grok consumer quota unavailable");
-    expect(result.state.status).not.toBe("auth_required");
-    expect(result.state.error).not.toMatch(/expired|sign-in/i);
+    expect(result.source).toBe("web");
     expect(result.attempts).toEqual([
       {
         source: "auth-json",
@@ -1378,25 +1782,24 @@ describe("Grok dual-source CLI and Pi xAI usability", () => {
       },
       {
         source: "pi:xai",
-        status: "skipped",
-        error: "model_auth_probe_live",
+        status: "success",
         credentialPresent: true,
       },
     ]);
     expect(fetchMock).toHaveBeenCalledOnce();
-    const [probeUrl, probeInit] = fetchMock.mock.calls[0] as unknown as [
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [
       string,
       RequestInit,
     ];
-    expect(probeUrl).toBe("https://api.x.ai/v1/models");
-    expect((probeInit.headers as Record<string, string>).Authorization).toBe(
+    expect(url).toContain("GetGrokCreditsConfig");
+    expect((init.headers as Record<string, string>).Authorization).toBe(
       "Bearer expired-pi-access",
     );
     expect(JSON.stringify(result)).not.toContain("expired-pi-access");
     expect(JSON.stringify(result)).not.toContain("expired-pi-refresh");
   });
 
-  it("keeps Pi expiry classification when the liveness probe is definitively rejected", async () => {
+  it("keeps Pi expiry classification when grok.com rejects the stored-expired Pi token", async () => {
     writePiXaiAuth({
       xai: {
         type: "oauth",
@@ -1405,10 +1808,15 @@ describe("Grok dual-source CLI and Pi xAI usability", () => {
         expires: Date.now() - 60_000,
       },
     });
-    const fetchMock = vi.fn(async () => new Response("{}", { status: 403 }));
+    const fetchMock = vi.fn(async () =>
+      grpcResponse(new Uint8Array(), { status: 403 }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state).toMatchObject({
       status: "unavailable",
@@ -1424,7 +1832,7 @@ describe("Grok dual-source CLI and Pi xAI usability", () => {
       {
         source: "pi:xai",
         status: "failed",
-        error: "credentials_rejected",
+        error: "Grok sign-in required",
         credentialPresent: true,
       },
     ]);
@@ -1432,7 +1840,7 @@ describe("Grok dual-source CLI and Pi xAI usability", () => {
     expect(JSON.stringify(result)).not.toContain("expired-pi-access");
   });
 
-  it("recovers usable Grok when the CLI session is rejected but the expired Pi token probes live", async () => {
+  it("fetches grok.com consumer credits with the expired Pi oauth token after the CLI session is rejected", async () => {
     writeAuth({
       "https://auth.x.ai::fixture-client": {
         key: "expired-access-token",
@@ -1449,19 +1857,24 @@ describe("Grok dual-source CLI and Pi xAI usability", () => {
         expires: Date.now() - 60_000,
       },
     });
-    const fetchMock = vi.fn(async (url: string) =>
-      url === "https://api.x.ai/v1/models"
-        ? new Response("{}", { status: 200 })
-        : grpcResponse(new Uint8Array(), { status: 403 }),
-    );
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const authorization = (
+        init?.headers as Record<string, string> | undefined
+      )?.Authorization;
+      return authorization === "Bearer expired-pi-access"
+        ? grpcResponse(consumerPayload())
+        : grpcResponse(new Uint8Array(), { status: 403 });
+    });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
+    expect(result.state.status).toBe("fresh");
     expect(result.state.authStatus).toBe("usable");
-    expect(result.state.status).toBe("unavailable");
-    expect(result.state.error).toBe("Grok consumer quota unavailable");
-    expect(result.state.error).not.toMatch(/expired|sign-in/i);
+    expect(result.source).toBe("web");
     expect(result.attempts).toEqual([
       {
         source: "web",
@@ -1470,8 +1883,7 @@ describe("Grok dual-source CLI and Pi xAI usability", () => {
       },
       {
         source: "pi:xai",
-        status: "skipped",
-        error: "model_auth_probe_live",
+        status: "success",
         credentialPresent: true,
       },
     ]);
@@ -1486,7 +1898,10 @@ describe("Grok dual-source CLI and Pi xAI usability", () => {
     writeFileSync(piAuthPath, "{not-json");
     vi.stubGlobal("fetch", vi.fn());
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state).toMatchObject({
       authStatus: "unusable",
@@ -1511,7 +1926,10 @@ describe("Grok dual-source CLI and Pi xAI usability", () => {
     });
     vi.stubGlobal("fetch", vi.fn());
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state).toMatchObject({
       status: "auth_required",
@@ -1533,8 +1951,14 @@ describe("Grok dual-source CLI and Pi xAI usability", () => {
       },
     });
 
-    const result = await adapter.fetchQuota({ allowKeychainPrompt: false });
-    const auth = await adapter.inspectAuth({ allowKeychainPrompt: false });
+    const result = await adapter.fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+    const auth = await adapter.inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result).toMatchObject({
       state: {
@@ -1576,7 +2000,10 @@ describe("Grok dual-source CLI and Pi xAI usability", () => {
       },
     });
 
-    const result = await adapter.fetchQuota({ allowKeychainPrompt: false });
+    const result = await adapter.fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state).toMatchObject({
       status: "fresh",
@@ -1623,7 +2050,10 @@ describe("Grok dual-source CLI and Pi xAI usability", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state.authStatus).toBe("usable");
     expect(result.state.status).not.toBe("auth_required");
@@ -1635,7 +2065,12 @@ describe("Grok dual-source CLI and Pi xAI usability", () => {
   });
 
   it("exposes usable model auth without consumer windows in compact and JSON output", async () => {
-    writeValidPiXaiOauth();
+    writePiXaiAuth({
+      xai: {
+        type: "api_key",
+        key: "pi-xai-api-key-fixture-value",
+      },
+    });
     vi.stubGlobal("fetch", vi.fn());
 
     const jsonText = await captureCli(["--provider", "grok", "--json"]);
@@ -1650,9 +2085,11 @@ describe("Grok dual-source CLI and Pi xAI usability", () => {
     expect(json.providers[0]?.state.reason).toBeUndefined();
     expect(JSON.stringify(json)).not.toContain("pi-xai-access-token-fixture");
 
+    // A provider with no quota row still states its positive auth fact.
     const toon = await captureCli(["--provider", "grok"]);
-    expect(toon).toContain("authStatus");
-    expect(toon).toMatch(/grok,unknown,unavailable,unavailable,usable/);
+    expect(toon).toContain(
+      "grok,all,unavailable,Grok consumer quota unavailable (auth usable),none",
+    );
     expect(toon).not.toContain("credentials_expired");
     expect(toon).not.toContain("pi-xai-access-token-fixture");
   });
@@ -1661,7 +2098,10 @@ describe("Grok dual-source CLI and Pi xAI usability", () => {
     writeValidAuth();
     writeValidPiXaiOauth();
     const { inspectAuth } = await import("../../src/providers/grok.js");
-    const report = await inspectAuth({ allowKeychainPrompt: false });
+    const report = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
     expect(report.sources).toEqual([
       {
         source: "auth-json",
@@ -1685,7 +2125,10 @@ describe("Grok cache provenance", () => {
       vi.fn(async () => Promise.reject(new Error("offline"))),
     );
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result).toMatchObject({
       source: "unavailable",
@@ -1702,7 +2145,10 @@ describe("Grok cache provenance", () => {
       vi.fn(async () => Promise.reject(new Error("offline"))),
     );
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result).toMatchObject({
       source: "cache",
@@ -1729,7 +2175,12 @@ describe("Grok CLI rendering regression", () => {
       vi.fn(async () => grpcResponse(payload)),
     );
 
-    const jsonText = await captureCli(["--provider", "grok", "--json"]);
+    const jsonText = await captureCli([
+      "--provider",
+      "grok",
+      "--json",
+      "--full",
+    ]);
     const json = JSON.parse(jsonText) as QuotaAxiResponse;
     expect(json.providers[0]).toMatchObject({
       provider: "grok",
@@ -1743,9 +2194,309 @@ describe("Grok CLI rendering regression", () => {
       ],
     });
 
-    const toon = await captureCli(["--provider", "grok"]);
+    const toon = await captureCli(["--provider", "grok", "--full"]);
     expect(toon).toContain("grok,credits,credits,100");
     expect(toon).not.toContain("grok,credits,credits,unknown");
+    expect(await captureCli(["--provider", "grok"])).toContain(
+      "grok,all_products,100",
+    );
+  });
+});
+
+function shellSingleQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
+type StubDelegate = {
+  /** Absolute path the stub writes one line to on each invocation. */
+  invocationLog: string;
+  invocationCount(): number;
+};
+
+/**
+ * Install a fake `grok` on PATH. It records that it ran and, when asked to,
+ * rewrites the store the way the real CLI does after rotating a session: a new
+ * access token with a future expiry, beside a new refresh token. Nothing reads
+ * its stdout, so it also prints noise the way the real CLI does.
+ */
+function stubGrokCli(
+  options: {
+    rotateTo?: string;
+    rotatedExpiresAt?: string;
+    clearStore?: boolean;
+  } = {},
+): StubDelegate {
+  const binDir = join(tempDir!, "stub-bin");
+  mkdirSync(binDir, { recursive: true });
+  const invocationLog = join(tempDir!, "grok-invocations.log");
+  const authFile = join(process.env.GROK_HOME!, "auth.json");
+  const rewrite = options.clearStore
+    ? `echo '{}' > ${JSON.stringify(authFile)}`
+    : options.rotateTo
+      ? `echo ${shellSingleQuote(
+          JSON.stringify({
+            "https://auth.x.ai::client": {
+              key: options.rotateTo,
+              auth_mode: "oidc",
+              oidc_issuer: "https://auth.x.ai",
+              // Opaque presence marker: quota-axi must not inspect this field.
+              refresh_token: true,
+              expires_at:
+                options.rotatedExpiresAt ?? "2035-01-01T00:00:00.000Z",
+            },
+          }),
+        )} > ${JSON.stringify(authFile)}`
+      : "";
+  // Only shell builtins: the delegate runs with the PATH quota-axi hands it,
+  // which in these tests holds nothing but the stub itself.
+  writeFileSync(
+    join(binDir, "grok"),
+    [
+      "#!/bin/sh",
+      `echo "$@" >> ${JSON.stringify(invocationLog)}`,
+      'echo "Available models:"',
+      rewrite,
+      "exit 0",
+      "",
+    ].join("\n"),
+  );
+  chmodSync(join(binDir, "grok"), 0o755);
+  process.env.PATH = binDir;
+  return {
+    invocationLog,
+    invocationCount: () =>
+      existsSync(invocationLog)
+        ? readFileSync(invocationLog, "utf8").trimEnd().split("\n").length
+        : 0,
+  };
+}
+
+/** Point the adapter at the store the Grok CLI itself owns. */
+function useCliOwnedStore(): string {
+  delete process.env.GROK_AUTH_JSON;
+  const authFile = join(process.env.GROK_HOME!, "auth.json");
+  mkdirSync(dirname(authFile), { recursive: true });
+  return authFile;
+}
+
+function writeExpiredCliAuth(key: string, refreshable = true): void {
+  writeAuth(
+    {
+      "https://auth.x.ai::client": {
+        key,
+        auth_mode: "oidc",
+        oidc_issuer: "https://auth.x.ai",
+        expires_at: "2020-01-01T00:00:00.000Z",
+        // Deliberately not a token fixture. Only field presence is observable.
+        ...(refreshable ? { refresh_token: true } : {}),
+      },
+    },
+    useCliOwnedStore(),
+  );
+}
+
+/** 401 for the stale bearer, fresh consumer quota for the rotated one. */
+function stubBearerAwareFetch(liveKey: string): ReturnType<typeof vi.fn> {
+  const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+    const headers = init.headers as Record<string, string>;
+    return headers.Authorization === `Bearer ${liveKey}`
+      ? grpcResponse()
+      : new Response(new Uint8Array(), { status: 401 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+describe("Grok delegated credential refresh", () => {
+  it("recovers live quota by letting the Grok CLI rotate its own session", async () => {
+    writeExpiredCliAuth("stale-key");
+    const delegate = stubGrokCli({ rotateTo: "rotated-key" });
+    const fetchMock = stubBearerAwareFetch("rotated-key");
+
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: true,
+    });
+
+    expect(result).toMatchObject({
+      source: "web",
+      state: { status: "fresh", stale: false },
+    });
+    expect(result.windows.length).toBeGreaterThan(0);
+    expect(result.state.sourcesTried).toContain("grok-cli-refresh");
+    expect(result.attempts?.slice(0, 3)).toEqual([
+      {
+        source: "web",
+        status: "failed",
+        error: "Grok sign-in required",
+      },
+      { source: "grok-cli-refresh", status: "success" },
+      { source: "web", status: "success" },
+    ]);
+    // The vendor CLI ran exactly once, with its own smallest read-only command.
+    expect(delegate.invocationCount()).toBe(1);
+    expect(readFileSync(delegate.invocationLog, "utf8").trim()).toBe("models");
+    // Rotation happened in the CLI, not here: quota-axi only ever called the
+    // consumer quota endpoint, once per bearer it read from the store.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    for (const [url] of fetchMock.mock.calls as Array<[string, RequestInit]>) {
+      expect(url).toBe(CONSUMER_QUOTA_URL);
+    }
+  });
+
+  it("probes a rewritten bearer even when its expiry metadata remains expired", async () => {
+    writeExpiredCliAuth("stale-key");
+    stubGrokCli({
+      rotateTo: "rotated-key",
+      rotatedExpiresAt: "2020-01-01T00:00:00.000Z",
+    });
+    const fetchMock = stubBearerAwareFetch("rotated-key");
+
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: true,
+    });
+
+    expect(result).toMatchObject({
+      source: "web",
+      state: { status: "fresh", authStatus: "usable" },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("adopts a store the Grok CLI cleared after rejecting the session", async () => {
+    writeExpiredCliAuth("stale-key");
+    stubGrokCli({ clearStore: true });
+    const fetchMock = stubBearerAwareFetch("unused-key");
+
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: true,
+    });
+
+    expect(result.state).toMatchObject({
+      status: "auth_required",
+      authStatus: "unusable",
+      error: "Grok sign-in required",
+    });
+    expect(result.attempts?.slice(0, 3)).toEqual([
+      {
+        source: "web",
+        status: "failed",
+        error: "Grok sign-in required",
+      },
+      { source: "grok-cli-refresh", status: "success" },
+      {
+        source: "auth-json",
+        status: "skipped",
+        error: "credentials_invalid",
+      },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("never performs a refresh-token request itself", async () => {
+    writeExpiredCliAuth("stale-key");
+    stubGrokCli({ rotateTo: "rotated-key" });
+    const fetchMock = stubBearerAwareFetch("rotated-key");
+
+    await fetchQuota({ allowKeychainPrompt: false, refreshCredentials: true });
+
+    for (const [url, init] of fetchMock.mock.calls as Array<
+      [string, RequestInit]
+    >) {
+      const request = JSON.stringify({
+        url,
+        headers: init.headers,
+        body:
+          init.body === undefined ? null : Array.from(init.body as Uint8Array),
+      });
+      expect(request).not.toContain("grant_type");
+      expect(url).not.toMatch(/token|oauth|auth\.x\.ai/i);
+    }
+  });
+
+  it("stays read-only when delegated refresh is turned off", async () => {
+    writeExpiredCliAuth("stale-key");
+    const delegate = stubGrokCli({ rotateTo: "rotated-key" });
+    stubBearerAwareFetch("rotated-key");
+
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+
+    expect(delegate.invocationCount()).toBe(0);
+    expect(result.state.status).not.toBe("fresh");
+    expect(result.state.sourcesTried).not.toContain("grok-cli-refresh");
+  });
+
+  it("does not delegate for a transient failure", async () => {
+    writeExpiredCliAuth("stale-key");
+    const delegate = stubGrokCli({ rotateTo: "rotated-key" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(new Uint8Array(), { status: 500 })),
+    );
+
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: true,
+    });
+
+    expect(delegate.invocationCount()).toBe(0);
+    expect(result.state.sourcesTried).not.toContain("grok-cli-refresh");
+  });
+
+  it("does not delegate when the store holds no refresh path", async () => {
+    writeExpiredCliAuth("stale-key", false);
+    const delegate = stubGrokCli({ rotateTo: "rotated-key" });
+    stubBearerAwareFetch("rotated-key");
+
+    await fetchQuota({ allowKeychainPrompt: false, refreshCredentials: true });
+
+    expect(delegate.invocationCount()).toBe(0);
+  });
+
+  it("does not delegate for a relocated store the Grok CLI would not rewrite", async () => {
+    const relocated = join(tempDir!, "relocated-auth.json");
+    writeAuth(
+      {
+        "https://auth.x.ai::client": {
+          key: "stale-key",
+          auth_mode: "oidc",
+          oidc_issuer: "https://auth.x.ai",
+          expires_at: "2020-01-01T00:00:00.000Z",
+          refresh_token: true,
+        },
+      },
+      relocated,
+    );
+    process.env.GROK_AUTH_JSON = relocated;
+    const delegate = stubGrokCli({ rotateTo: "rotated-key" });
+    stubBearerAwareFetch("rotated-key");
+
+    await fetchQuota({ allowKeychainPrompt: false, refreshCredentials: true });
+
+    expect(delegate.invocationCount()).toBe(0);
+  });
+
+  it("reports a missing Grok CLI as a skipped refresh instead of failing", async () => {
+    writeExpiredCliAuth("stale-key");
+    process.env.PATH = join(tempDir!, "empty-bin");
+    stubBearerAwareFetch("rotated-key");
+
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: true,
+    });
+
+    expect(result.attempts).toContainEqual({
+      source: "grok-cli-refresh",
+      status: "skipped",
+      error: "refresh_command_not_found",
+    });
+    expect(result.state.status).not.toBe("fresh");
   });
 });
 

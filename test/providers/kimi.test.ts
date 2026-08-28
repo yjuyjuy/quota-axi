@@ -23,7 +23,7 @@ import type {
 } from "../../src/types.js";
 
 const NOW = Date.parse("2027-02-03T04:05:06.000Z");
-const OPTIONS = { allowKeychainPrompt: false };
+const OPTIONS = { allowKeychainPrompt: false, refreshCredentials: false };
 
 const PRINCIPAL = {
   limit: 640,

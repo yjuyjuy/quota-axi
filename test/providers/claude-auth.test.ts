@@ -154,8 +154,14 @@ describe("Claude credential-state reporting", () => {
 
     const { fetchQuota, inspectAuth } =
       await import("../../src/providers/claude.js");
-    const auth = await inspectAuth({ allowKeychainPrompt: false });
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const auth = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(auth.sources[0]).toMatchObject({
       source: "oauth-file",
@@ -178,7 +184,10 @@ describe("Claude credential-state reporting", () => {
     vi.doMock("../../src/lib/process.js", () => ({ execFileText }));
 
     const { inspectAuth } = await import("../../src/providers/claude.js");
-    await inspectAuth({ allowKeychainPrompt: false });
+    await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(execFileText).toHaveBeenCalledWith(
       "security",
@@ -214,7 +223,10 @@ describe("Claude credential-state reporting", () => {
 
     const { claudeCredentialFile, inspectAuth } =
       await import("../../src/providers/claude.js");
-    const auth = await inspectAuth({ allowKeychainPrompt: false });
+    const auth = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(claudeCredentialFile()).toBe(".credentials.json");
     expect(marker).toMatch(
@@ -279,7 +291,10 @@ describe("Claude credential-state reporting", () => {
     vi.doMock("../../src/lib/process.js", () => ({ execFileText }));
 
     const { inspectAuth } = await import("../../src/providers/claude.js");
-    const auth = await inspectAuth({ allowKeychainPrompt: false });
+    const auth = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(auth.sources[0]).toMatchObject({
       source: "oauth-file",
@@ -318,8 +333,14 @@ describe("Claude credential-state reporting", () => {
 
     const { fetchQuota, inspectAuth } =
       await import("../../src/providers/claude.js");
-    const auth = await inspectAuth({ allowKeychainPrompt: false });
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const auth = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(auth.sources[0]).toMatchObject({ status: "expired" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -354,8 +375,14 @@ describe("Claude credential-state reporting", () => {
 
     const { fetchQuota, inspectAuth } =
       await import("../../src/providers/claude.js");
-    const auth = await inspectAuth({ allowKeychainPrompt: false });
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const auth = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(auth.sources[0]).toMatchObject({
       source: "oauth-file",
@@ -457,7 +484,10 @@ describe("Claude credential-state reporting", () => {
       writeCachedProviders([cachedClaudeQuota(34)]);
 
       const { fetchQuota } = await import("../../src/providers/claude.js");
-      const result = await fetchQuota({ allowKeychainPrompt: false });
+      const result = await fetchQuota({
+        allowKeychainPrompt: false,
+        refreshCredentials: false,
+      });
 
       expect(fetchMock).not.toHaveBeenCalled();
       expect(result).toMatchObject({
@@ -495,7 +525,10 @@ describe("Claude credential-state reporting", () => {
       writeCachedProviders([cachedClaudeQuota(34)]);
 
       const { fetchQuota } = await import("../../src/providers/claude.js");
-      const result = await fetchQuota({ allowKeychainPrompt: false });
+      const result = await fetchQuota({
+        allowKeychainPrompt: false,
+        refreshCredentials: false,
+      });
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(result).toMatchObject({
@@ -550,10 +583,14 @@ describe("Claude credential-state reporting", () => {
 
     for (const [label, failure] of failures) {
       vi.stubGlobal("fetch", vi.fn(failure));
-      const result = await fetchQuota({ allowKeychainPrompt: false });
+      const result = await fetchQuota({
+        allowKeychainPrompt: false,
+        refreshCredentials: false,
+      });
 
       expect(result.source, label).toBe("cache");
       expect(result.state.status, label).toBe("stale");
+      expect(result.state.error, label).toBeTruthy();
       expect(
         result.windows.map(({ id }) => id),
         label,
@@ -584,7 +621,10 @@ describe("Claude credential-state reporting", () => {
       );
 
       const { fetchQuota } = await import("../../src/providers/claude.js");
-      const result = await fetchQuota({ allowKeychainPrompt: false });
+      const result = await fetchQuota({
+        allowKeychainPrompt: false,
+        refreshCredentials: false,
+      });
       const annotated = annotateQuotaAdvice({
         generatedAt: new Date().toISOString(),
         providers: [result],
@@ -608,6 +648,107 @@ describe("Claude credential-state reporting", () => {
       expect(JSON.stringify(annotated)).not.toContain(fakeToken);
     },
   );
+  it("uses a stale snapshot only for its matching synthetic credential context", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-06T20:00:00.000Z"));
+    const home = useTempHome();
+    const contextA = join(home, "synthetic-context-a");
+    process.env.CLAUDE_CONFIG_DIR = contextA;
+    writeClaudeConfigCredential(contextA, {
+      accessToken: "synthetic-token-a",
+      expiresAt: "2035-01-01T00:00:00.000Z",
+    });
+    const { writeCachedProviders } = await import("../../src/cache.js");
+    writeCachedProviders([cachedClaudeQuota(42)]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("network unavailable");
+      }),
+    );
+
+    const { fetchQuota } = await import("../../src/providers/claude.js");
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+
+    expect(result).toMatchObject({
+      source: "cache",
+      windows: [expect.objectContaining({ percentUsed: 42 })],
+      state: { status: "stale", stale: true },
+    });
+  });
+
+  it("rejects a stale snapshot from a different synthetic credential context", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-06T20:00:00.000Z"));
+    const home = useTempHome();
+    const contextA = join(home, "synthetic-context-a");
+    const contextB = join(home, "synthetic-context-b");
+    process.env.CLAUDE_CONFIG_DIR = contextA;
+    const { writeCachedProviders } = await import("../../src/cache.js");
+    writeCachedProviders([cachedClaudeQuota(42)]);
+    process.env.CLAUDE_CONFIG_DIR = contextB;
+    writeClaudeConfigCredential(contextB, {
+      accessToken: "synthetic-token-b",
+      expiresAt: "2035-01-01T00:00:00.000Z",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("network unavailable");
+      }),
+    );
+
+    const { fetchQuota } = await import("../../src/providers/claude.js");
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+
+    expect(result).toMatchObject({
+      source: "unavailable",
+      windows: [],
+      state: { status: "error", stale: false, error: "network unavailable" },
+    });
+  });
+
+  it("fails closed for a legacy context-less Claude snapshot", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-06T20:00:00.000Z"));
+    const home = useTempHome();
+    const context = join(home, "synthetic-context-a");
+    process.env.CLAUDE_CONFIG_DIR = context;
+    writeClaudeConfigCredential(context, {
+      accessToken: "synthetic-token-a",
+      expiresAt: "2035-01-01T00:00:00.000Z",
+    });
+    const { cacheFilePath } = await import("../../src/lib/fs.js");
+    mkdirSync(dirname(cacheFilePath()), { recursive: true });
+    writeFileSync(
+      cacheFilePath(),
+      JSON.stringify({ schemaVersion: 1, providers: [cachedClaudeQuota(42)] }),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("network unavailable");
+      }),
+    );
+
+    const { fetchQuota } = await import("../../src/providers/claude.js");
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+
+    expect(result).toMatchObject({
+      source: "unavailable",
+      windows: [],
+      state: { status: "error", stale: false, error: "network unavailable" },
+    });
+  });
 
   it("prunes reset-expired windows while retaining an eligible active window", async () => {
     vi.useFakeTimers();
@@ -647,7 +788,10 @@ describe("Claude credential-state reporting", () => {
     writeCachedProviders([cached]);
 
     const { fetchQuota } = await import("../../src/providers/claude.js");
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.source).toBe("cache");
     expect(result.windows.map(({ id }) => id)).toEqual(["seven_day"]);
@@ -671,7 +815,10 @@ describe("Claude credential-state reporting", () => {
     writeCachedProviders([cachedClaudeQuota(34)]);
 
     const { fetchQuota } = await import("../../src/providers/claude.js");
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result).toMatchObject({
       source: "unavailable",
@@ -701,7 +848,10 @@ describe("Claude credential-state reporting", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { fetchQuota } = await import("../../src/providers/claude.js");
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state.status).toBe("fresh");
     expect(fetchMock).toHaveBeenCalledWith(
@@ -747,7 +897,10 @@ describe("Claude credential-state reporting", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { fetchQuota } = await import("../../src/providers/claude.js");
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.account).toEqual({
       accountId: "11111111-2222-4333-8444-555555555555",
@@ -797,7 +950,10 @@ describe("Claude credential-state reporting", () => {
     );
 
     const { fetchQuota } = await import("../../src/providers/claude.js");
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state.status).toBe("fresh");
     expect(result.account).toEqual({ identityStatus: "unverified" });
@@ -812,7 +968,10 @@ describe("Claude credential-state reporting", () => {
     useTempHome();
 
     const { fetchQuota } = await import("../../src/providers/claude.js");
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state.status).toBe("auth_required");
     expect(result.state.error).toBe("credentials_missing");
@@ -839,8 +998,14 @@ describe("Claude credential-state reporting", () => {
 
     const { fetchQuota, inspectAuth } =
       await import("../../src/providers/claude.js");
-    const auth = await inspectAuth({ allowKeychainPrompt: false });
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const auth = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(execFileText).toHaveBeenCalledWith(
       "security",
@@ -887,7 +1052,10 @@ describe("Claude credential-state reporting", () => {
     vi.doMock("../../src/lib/process.js", () => ({ execFileText }));
 
     const { inspectAuth } = await import("../../src/providers/claude.js");
-    const auth = await inspectAuth({ allowKeychainPrompt: true });
+    const auth = await inspectAuth({
+      allowKeychainPrompt: true,
+      refreshCredentials: false,
+    });
 
     expect(execFileText).toHaveBeenCalledTimes(1);
     expect(execFileText).toHaveBeenCalledWith(
@@ -904,7 +1072,8 @@ describe("Claude credential-state reporting", () => {
     );
     expect(auth.sources).toContainEqual({
       source: "keychain",
-      status: "missing",
+      status: "skipped",
+      error: "keychain_unreachable",
     });
   });
 
@@ -931,8 +1100,14 @@ describe("Claude credential-state reporting", () => {
 
     const { fetchQuota, inspectAuth } =
       await import("../../src/providers/claude.js");
-    const auth = await inspectAuth({ allowKeychainPrompt: false });
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const auth = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(marker).toContain("claude-keychain-access-granted");
     expect(execFileText).toHaveBeenCalledWith(
@@ -989,8 +1164,14 @@ describe("Claude credential-state reporting", () => {
 
     const { fetchQuota, inspectAuth } =
       await import("../../src/providers/claude.js");
-    const auth = await inspectAuth({ allowKeychainPrompt: false });
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const auth = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(auth.sources).toContainEqual({
       source: "keychain",
@@ -1029,7 +1210,10 @@ describe("Claude credential-state reporting", () => {
     );
 
     const { fetchQuota } = await import("../../src/providers/claude.js");
-    const result = await fetchQuota({ allowKeychainPrompt: true });
+    const result = await fetchQuota({
+      allowKeychainPrompt: true,
+      refreshCredentials: false,
+    });
 
     expect(result.state.status).toBe("fresh");
     expect(execFileText).toHaveBeenCalledWith(
@@ -1240,8 +1424,14 @@ describe("Claude credential-state reporting", () => {
 
     const { fetchQuota, inspectAuth } =
       await import("../../src/providers/claude.js");
-    const auth = await inspectAuth({ allowKeychainPrompt: false });
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const auth = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(execFileText).toHaveBeenCalledWith(
       "security",
@@ -1265,12 +1455,13 @@ describe("Claude credential-state reporting", () => {
 
     expect(auth.sources).toContainEqual({
       source: "keychain",
-      status: "missing",
+      status: "skipped",
+      error: "keychain_presence_check_failed",
     });
     expect(result.attempts).toContainEqual({
       source: "keychain",
       status: "skipped",
-      error: "credentials_missing",
+      error: "keychain_presence_check_failed",
     });
     expect(result.attempts).not.toContainEqual(
       expect.objectContaining({
@@ -1280,13 +1471,99 @@ describe("Claude credential-state reporting", () => {
     );
   });
 
+  it("names the usage-fetch error on the stale Claude attention row", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-06T20:00:00.000Z"));
+    const home = useTempHome();
+    writeClaudeCredential(home, {
+      accessToken: "live-token",
+      expiresAt: "2035-01-01T00:00:00.000Z",
+    });
+    const { writeCachedProviders } = await import("../../src/cache.js");
+    writeCachedProviders([cachedClaudeQuota(34)]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 503 })),
+    );
+    const chunks: string[] = [];
+    const { main } = await import("../../src/cli.js");
+    await main({
+      argv: ["--provider", "claude"],
+      binPath: "quota-axi",
+      stdout: {
+        write(chunk) {
+          chunks.push(String(chunk));
+          return true;
+        },
+      },
+    });
+    const output = chunks.join("");
+    expect(output).toContain(
+      'claude,all,stale,"last refreshed 2026-07-06T18:10:00Z · fetch failed Claude quota unavailable (503)"',
+    );
+  });
+
+  it("does not treat Keychain exit 44 as signed-out or retire the Claude cache", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-06T20:00:00.000Z"));
+    usePlatform("darwin");
+    useTempHome();
+    const { readCachedProvider, writeCachedProviders } =
+      await import("../../src/cache.js");
+    writeCachedProviders([cachedClaudeQuota(34)]);
+    const execFileText = vi.fn(async () => {
+      throw Object.assign(new Error("not found"), { code: 44 });
+    });
+    vi.doMock("../../src/lib/process.js", () => ({ execFileText }));
+    const { fetchQuota } = await import("../../src/providers/claude.js");
+    const result = await fetchQuota({
+      allowKeychainPrompt: true,
+      refreshCredentials: false,
+    });
+    expect(result.state.status).not.toBe("auth_required");
+    expect(result.state.error).toBe("keychain_unreachable");
+    expect(result.source).toBe("cache");
+    expect(readCachedProvider("claude")).toMatchObject({
+      provider: "claude",
+      source: "oauth",
+    });
+  });
+
+  it("says so when Keychain is denied and does not offer a prompt that cannot help", async () => {
+    usePlatform("darwin");
+    useTempHome();
+    const execFileText = vi.fn(async () => {
+      throw Object.assign(new Error("auth failed"), { code: 51 });
+    });
+    vi.doMock("../../src/lib/process.js", () => ({ execFileText }));
+    const { fetchQuota } = await import("../../src/providers/claude.js");
+    const { annotateQuotaAdvice } = await import("../../src/advice.js");
+    const result = await fetchQuota({
+      allowKeychainPrompt: true,
+      refreshCredentials: false,
+    });
+    const annotated = annotateQuotaAdvice({
+      generatedAt: new Date().toISOString(),
+      providers: [result],
+    });
+    expect(result.state.error).toBe("keychain_access_denied");
+    expect(result.state.status).not.toBe("auth_required");
+    expect(annotated.providers[0]?.state.remedyCommand).toBeUndefined();
+    expect(annotated.help?.join("\n") ?? "").not.toContain(
+      "--allow-keychain-prompt",
+    );
+  });
+
   it("surfaces malformed file credentials as invalid auth", async () => {
     const home = useTempHome();
     mkdirSync(join(home, ".claude"), { recursive: true });
     writeFileSync(join(home, ".claude", ".credentials.json"), "{not-json");
 
     const { inspectAuth } = await import("../../src/providers/claude.js");
-    const result = await inspectAuth({ allowKeychainPrompt: false });
+    const result = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.sources[0]).toMatchObject({
       source: "oauth-file",
@@ -1310,9 +1587,16 @@ function writeClaudeCredential(
   home: string,
   oauth: Record<string, unknown>,
 ): void {
-  mkdirSync(join(home, ".claude"), { recursive: true });
+  writeClaudeConfigCredential(join(home, ".claude"), oauth);
+}
+
+function writeClaudeConfigCredential(
+  configDir: string,
+  oauth: Record<string, unknown>,
+): void {
+  mkdirSync(configDir, { recursive: true });
   writeFileSync(
-    join(home, ".claude", ".credentials.json"),
+    join(configDir, ".credentials.json"),
     JSON.stringify({ claudeAiOauth: oauth }),
   );
 }

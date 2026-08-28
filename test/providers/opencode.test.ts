@@ -46,7 +46,7 @@ function writeAuthJson(value: unknown): void {
   writeFileSync(path, JSON.stringify(value));
 }
 
-const options = { allowKeychainPrompt: false };
+const options = { allowKeychainPrompt: false, refreshCredentials: false };
 
 describe("opencode declared windows", () => {
   it("declares the Go plan's $12/5h, $30/week, $60/month windows", () => {

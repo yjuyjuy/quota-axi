@@ -2,8 +2,9 @@ import { chmodSync, existsSync, renameSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
-import { deleteCachedProvider, readCachedProvider } from "../cache.js";
+import { deleteCachedProvider, readCachedClaudeProvider } from "../cache.js";
 import {
+  claudeCredentialContextId,
   claudeKeychainAccessMarkerPath,
   ensurePrivateParent,
   readJsonFileResult,
@@ -28,6 +29,12 @@ import {
   successProvider,
   withRemaining,
 } from "./common.js";
+import {
+  refreshDelegateAttempt,
+  runRefreshDelegate,
+  type RefreshDelegate,
+} from "./delegated-refresh.js";
+import { withUsageFetchFailure } from "./usage-fetch-failure.js";
 
 const API_URL = "https://api.anthropic.com/api/oauth/usage";
 const PROFILE_API_URL = "https://api.anthropic.com/api/oauth/profile";
@@ -36,7 +43,9 @@ const CLAUDE_CODE_USER_AGENT = "claude-code/2.1.202";
 const API_TIMEOUT_MS = 15_000;
 const KEYCHAIN_PROMPT_TIMEOUT_MS = 60_000;
 const KEYCHAIN_PRESENCE_TIMEOUT_MS = 5_000;
-const KEYCHAIN_ITEM_NOT_FOUND_EXIT_CODE = 44;
+/** `security` exit 44 is cannot-reach (locked, TCC, daemon), not item-absent. */
+const KEYCHAIN_ITEM_UNREACHABLE_EXIT_CODE = 44;
+const KEYCHAIN_UNREACHABLE_ERROR = "keychain_unreachable";
 const DEFAULT_KEYCHAIN_SERVICE = "Claude Code-credentials";
 const DEFAULT_KEYCHAIN_ACCOUNT = "claude-code-user";
 const SAFE_KEYCHAIN_ACCOUNT = /^[a-zA-Z0-9._-]+$/;
@@ -60,6 +69,12 @@ type AdvisoryExpiredCredentialState = {
   status: "expired";
   credentials: ClaudeCredentials;
   source: AuthSourceReport;
+  /**
+   * Whether the same store holds a refresh token beside the expired access
+   * token. Presence only: quota-axi never reads that value, and the Claude CLI
+   * is the only thing that ever exchanges it.
+   */
+  refreshable: boolean;
 };
 type UnavailableCredentialState = {
   status: "missing" | "invalid";
@@ -123,26 +138,106 @@ export const claudeAdapter: ProviderAdapter = {
   inspectAuth,
 };
 
+/**
+ * `claude doctor` is the smallest observed non-interactive Claude Code command
+ * that makes the CLI renew its own expired OAuth session and rewrite whichever
+ * store it owns (the macOS Keychain item, or `.credentials.json`). It prints an
+ * installation health summary and exits: it starts no session, sends no model
+ * request, spends no quota, opens no browser, and - unlike `claude mcp list` -
+ * does not connect to configured MCP servers.
+ *
+ * Observed behavior that makes it safe to delegate to: with the access token
+ * expired it performs the refresh exchange, and a network failure during that
+ * exchange leaves the stored session untouched. Only Anthropic definitively
+ * rejecting the refresh token clears the session, which is Claude Code's own
+ * handling of a session that has genuinely ended.
+ */
+const CLAUDE_CLI_REFRESH_DELEGATE: RefreshDelegate = {
+  source: "claude-cli-refresh",
+  command: "claude",
+  args: ["doctor"],
+  timeoutMs: 20_000,
+};
+
+type ClaudeQuotaPass =
+  | { kind: "success"; report: ProviderQuota }
+  | {
+      kind: "failure";
+      failure: ClaudeFailure;
+      /** The same expired, refreshable credential was definitively rejected. */
+      refreshableExpiredRejected: boolean;
+      /** A Keychain value read was withheld, so its store cannot be re-read. */
+      keychainWithheld: boolean;
+    };
+
 export async function fetchQuota(
   options: ProviderOptions,
 ): Promise<ProviderQuota> {
   const attempts: SourceAttempt[] = [];
+  const credentialContextId = claudeCredentialContextId();
 
+  let pass = await attemptClaudeQuota(options, attempts);
+  if (pass.kind === "success") return pass.report;
+
+  // Soft expiry the Claude CLI can fix: hand the rotation to the CLI that owns
+  // the credential store, then read back the session it rewrote.
+  if (shouldDelegateClaudeRefresh(options, pass)) {
+    const run = await runRefreshDelegate(CLAUDE_CLI_REFRESH_DELEGATE);
+    attempts.push(refreshDelegateAttempt(CLAUDE_CLI_REFRESH_DELEGATE, run));
+    if (run.status === "ran") {
+      const retry = await attemptClaudeQuota(options, attempts);
+      if (retry.kind === "success") return retry.report;
+      pass = retry;
+    }
+  }
+
+  return failureReport(pass.failure, attempts, credentialContextId);
+}
+
+/**
+ * Delegate only on soft expiry of a store quota-axi can read back: a stored
+ * session that still carries a refresh token was definitively rejected. A
+ * transient failure, a missing or malformed store, and a withheld Keychain
+ * value all stay read-only - the last one keeps its existing Keychain advice,
+ * because the CLI would rewrite a store quota-axi still could not read.
+ */
+function shouldDelegateClaudeRefresh(
+  options: ProviderOptions,
+  pass: Extract<ClaudeQuotaPass, { kind: "failure" }>,
+): boolean {
+  return (
+    options.refreshCredentials &&
+    pass.refreshableExpiredRejected &&
+    !pass.keychainWithheld
+  );
+}
+
+async function attemptClaudeQuota(
+  options: ProviderOptions,
+  attempts: SourceAttempt[],
+): Promise<ClaudeQuotaPass> {
   const credentialStates = await readCredentialStates(options);
-  const credentials = credentialStates
+  const credentialCandidates = credentialStates
     .filter(
       (
         state,
       ): state is AvailableCredentialState | AdvisoryExpiredCredentialState =>
         state.status === "available" || state.status === "expired",
     )
-    .map((state) => state.credentials)
     .sort((a, b) => {
       if (process.platform === "darwin") {
-        if (a.source === "keychain" && b.source !== "keychain") return -1;
-        if (b.source === "keychain" && a.source !== "keychain") return 1;
+        if (
+          a.credentials.source === "keychain" &&
+          b.credentials.source !== "keychain"
+        )
+          return -1;
+        if (
+          b.credentials.source === "keychain" &&
+          a.credentials.source !== "keychain"
+        )
+          return 1;
       }
-      return (b.expiresAt ?? 0) - (a.expiresAt ?? 0);
+      return (b.credentials.expiresAt ?? 0) - (a.credentials.expiresAt ?? 0);
     });
 
   for (const state of credentialStates) {
@@ -166,9 +261,11 @@ export async function fetchQuota(
 
   let definitiveFailure: ClaudeFailure | undefined;
   let transientFailure: ClaudeFailure | undefined;
+  let refreshableExpiredRejected = false;
 
-  if (credentials.length > 0) {
-    for (const credential of credentials) {
+  if (credentialCandidates.length > 0) {
+    for (const state of credentialCandidates) {
+      const credential = state.credentials;
       attempts.push({ source: credential.source, status: "failed" });
       try {
         const quota = await fetchOauthUsage(credential);
@@ -185,17 +282,20 @@ export async function fetchQuota(
               }
             : { source: "oauth-profile", status: "success" },
         );
-        return successProvider({
-          provider: "claude",
-          label: "Claude",
-          source: "oauth",
-          plan: quota.plan,
-          account: quota.account,
-          windows: quota.windows,
-          refreshedAt: quota.refreshedAt,
-          sourcesTried: sourceNames(attempts),
-          attempts,
-        });
+        return {
+          kind: "success",
+          report: successProvider({
+            provider: "claude",
+            label: "Claude",
+            source: "oauth",
+            plan: quota.plan,
+            account: quota.account,
+            windows: quota.windows,
+            refreshedAt: quota.refreshedAt,
+            sourcesTried: sourceNames(attempts),
+            attempts,
+          }),
+        };
       } catch (error) {
         const failure = claudeFailureFor(error);
         attempts[attempts.length - 1] = {
@@ -203,8 +303,14 @@ export async function fetchQuota(
           status: "failed",
           error: failure.code,
         };
-        if (failure.definitiveAuth) definitiveFailure ??= failure;
-        else transientFailure = failure;
+        if (failure.definitiveAuth) {
+          definitiveFailure ??= failure;
+          if (state.status === "expired" && state.refreshable) {
+            refreshableExpiredRejected = true;
+          }
+        } else {
+          transientFailure = failure.withUsageFetchFailure();
+        }
       }
     }
   } else {
@@ -227,17 +333,24 @@ export async function fetchQuota(
     }
   }
 
-  return failureReport(
-    definitiveFailure ??
+  return {
+    kind: "failure",
+    failure:
+      definitiveFailure ??
       transientFailure ??
       new ClaudeFailure("Claude quota unavailable", { staleEligible: true }),
-    attempts,
-  );
+    refreshableExpiredRejected,
+    keychainWithheld: credentialStates.some(
+      (state) =>
+        state.status === "skipped" && state.source.source === "keychain",
+    ),
+  };
 }
 
 function failureReport(
   failure: ClaudeFailure,
   attempts: SourceAttempt[],
+  credentialContextId: string,
 ): ProviderQuota {
   if (failure.definitiveAuth) {
     try {
@@ -249,7 +362,7 @@ function failureReport(
 
   if (failure.staleEligible) {
     try {
-      const cached = readCachedProvider("claude");
+      const cached = readCachedClaudeProvider(credentialContextId);
       const stale = cached
         ? staleClaudeReport(cached, failure, attempts, Date.now())
         : undefined;
@@ -299,7 +412,7 @@ function staleClaudeReport(
   });
   if (windows.length === 0) return undefined;
 
-  return {
+  const report: ProviderQuota = {
     provider: "claude",
     label: "Claude",
     source: "cache",
@@ -315,6 +428,7 @@ function staleClaudeReport(
     },
     attempts,
   };
+  return failure.usageFetchFailure ? withUsageFetchFailure(report) : report;
 }
 
 function resetlessWindowMaxAge(window: QuotaWindow): number | undefined {
@@ -560,8 +674,8 @@ async function readKeychainItemPresence(
       KEYCHAIN_PRESENCE_TIMEOUT_MS,
     );
     return "present";
-  } catch (error) {
-    return isKeychainItemNotFound(error) ? "missing" : "unknown";
+  } catch {
+    return "unknown";
   }
 }
 
@@ -672,10 +786,10 @@ function keychainServiceForConfigDir(configDir?: string): string {
   return `${DEFAULT_KEYCHAIN_SERVICE}-${suffix}`;
 }
 
-function isKeychainItemNotFound(error: unknown): boolean {
+function isKeychainItemUnreachable(error: unknown): boolean {
   return (
     (error as { code?: number | string | null }).code ===
-    KEYCHAIN_ITEM_NOT_FOUND_EXIT_CODE
+    KEYCHAIN_ITEM_UNREACHABLE_EXIT_CODE
   );
 }
 
@@ -695,10 +809,14 @@ function keychainFailureState(error: unknown): CredentialState {
       },
     };
   }
-  if (isKeychainItemNotFound(error)) {
+  if (isKeychainItemUnreachable(error)) {
     return {
-      status: "missing",
-      source: { source: "keychain", status: "missing" },
+      status: "skipped",
+      source: {
+        source: "keychain",
+        status: "skipped",
+        error: KEYCHAIN_UNREACHABLE_ERROR,
+      },
     };
   }
   return {
@@ -743,12 +861,25 @@ function extractCredentialState(
       status: "expired",
       credentials,
       source: { source, path, status: "expired" },
+      refreshable: hasRefreshToken(oauth),
     };
   }
   return {
     status: "available",
     credentials,
   };
+}
+
+/**
+ * Presence check only. The value of a Claude refresh token never enters
+ * quota-axi: Anthropic rotates it on use, so exchanging it here would spend the
+ * Claude CLI's own single-use token and sign the user out of Claude Code.
+ */
+function hasRefreshToken(oauth: Record<string, unknown>): boolean {
+  return (
+    Object.hasOwn(oauth, "refreshToken") ||
+    Object.hasOwn(oauth, "refresh_token")
+  );
 }
 
 async function fetchOauthUsage(credentials: ClaudeCredentials): Promise<{
@@ -957,6 +1088,7 @@ class ClaudeFailure extends Error {
   readonly definitiveAuth: boolean;
   readonly staleEligible: boolean;
   readonly retryAfter: string | undefined;
+  usageFetchFailure = false;
 
   constructor(
     readonly code: string,
@@ -968,5 +1100,10 @@ class ClaudeFailure extends Error {
     this.definitiveAuth = options.definitiveAuth ?? false;
     this.staleEligible = options.staleEligible ?? false;
     this.retryAfter = options.retryAfter;
+  }
+
+  withUsageFetchFailure(): this {
+    this.usageFetchFailure = true;
+    return this;
   }
 }

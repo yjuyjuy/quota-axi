@@ -73,8 +73,11 @@ describe("Codex credential-state reporting", () => {
 
     const { fetchQuota, inspectAuth } =
       await import("../../src/providers/codex.js");
-    const auth = await inspectAuth({ allowKeychainPrompt: false });
-    await fetchQuota({ allowKeychainPrompt: false });
+    const auth = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+    await fetchQuota({ allowKeychainPrompt: false, refreshCredentials: false });
 
     expect(auth.sources[1]).toEqual({
       source: "cli-rpc",
@@ -99,7 +102,10 @@ describe("Codex credential-state reporting", () => {
     }));
 
     const { inspectAuth } = await import("../../src/providers/codex.js");
-    const auth = await inspectAuth({ allowKeychainPrompt: false });
+    const auth = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(auth.sources[1]).toEqual({
       source: "cli-rpc",
@@ -120,7 +126,10 @@ describe("Codex credential-state reporting", () => {
     }));
 
     const { inspectAuth } = await import("../../src/providers/codex.js");
-    const auth = await inspectAuth({ allowKeychainPrompt: false });
+    const auth = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(auth.sources[1]).toEqual({
       source: "cli-rpc",
@@ -139,8 +148,14 @@ describe("Codex credential-state reporting", () => {
 
     const { fetchQuota, inspectAuth } =
       await import("../../src/providers/codex.js");
-    const auth = await inspectAuth({ allowKeychainPrompt: false });
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const auth = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(auth.sources[0]).toMatchObject({
       source: "auth-json",
@@ -162,8 +177,14 @@ describe("Codex credential-state reporting", () => {
 
     const { fetchQuota, inspectAuth } =
       await import("../../src/providers/codex.js");
-    const auth = await inspectAuth({ allowKeychainPrompt: false });
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const auth = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(auth.sources[0]).toMatchObject({
       source: "auth-json",
@@ -208,8 +229,14 @@ describe("Codex credential-state reporting", () => {
 
     const { fetchQuota, inspectAuth } =
       await import("../../src/providers/codex.js");
-    const auth = await inspectAuth({ allowKeychainPrompt: false });
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const auth = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(auth.sources[0]).toMatchObject({
       source: "auth-json",
@@ -240,8 +267,14 @@ describe("Codex credential-state reporting", () => {
 
     const { fetchQuota, inspectAuth } =
       await import("../../src/providers/codex.js");
-    const auth = await inspectAuth({ allowKeychainPrompt: false });
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const auth = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(auth.sources[0]?.status).toBe("expired");
     expect(fetchMock).not.toHaveBeenCalled();
@@ -256,7 +289,10 @@ describe("Codex credential-state reporting", () => {
     writeAuth("{not-json");
 
     const { inspectAuth } = await import("../../src/providers/codex.js");
-    const auth = await inspectAuth({ allowKeychainPrompt: false });
+    const auth = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(auth.sources[0]).toMatchObject({
       source: "auth-json",
@@ -283,7 +319,10 @@ describe("Codex credential-state reporting", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { fetchQuota } = await import("../../src/providers/codex.js");
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(result.state.status).toBe("rate_limited");

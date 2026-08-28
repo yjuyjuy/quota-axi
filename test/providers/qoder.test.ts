@@ -48,7 +48,7 @@ function writeAuthFile(value: unknown): void {
   writeFileSync(path, JSON.stringify(value));
 }
 
-const options = { allowKeychainPrompt: false };
+const options = { allowKeychainPrompt: false, refreshCredentials: false };
 
 describe("qoder plan resolution", () => {
   it("maps each plan to its declared monthly credit budget", () => {

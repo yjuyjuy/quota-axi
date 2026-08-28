@@ -21,6 +21,8 @@ import {
   withRemaining,
 } from "./common.js";
 import {
+  CURSOR_CLI_AUTHFILE_SOURCE,
+  CURSOR_CLI_SOURCE,
   isCursorCliSourceSupported,
   readCursorCliCredentialState,
 } from "./cursor-cli-credential.js";
@@ -78,9 +80,11 @@ export async function fetchQuota(
   if (resolution.credentials) {
     // The editor-credential fetch keeps its established `api` attempt name; a
     // CLI-resolved fetch is named for its credential store so `sourcesTried`
-    // shows that the Keychain token, not the absent editor store, answered.
+    // shows which CLI store, not the absent editor store, answered.
     const quotaSource =
-      resolution.source === "cli-keychain" ? "cli-keychain" : "api";
+      resolution.source === undefined || resolution.source === "state-vscdb"
+        ? "api"
+        : resolution.source;
     attempts.push({ source: quotaSource, status: "failed" });
     try {
       const quota = await fetchCursorUsage(resolution.credentials);
@@ -108,18 +112,21 @@ export async function fetchQuota(
         };
         const cliState = await readCliCredentialState(options);
         if (cliState.status === "available") {
-          attempts.push({ source: "cli-keychain", status: "failed" });
+          attempts.push({
+            source: cliState.source.source,
+            status: "failed",
+          });
           try {
             const quota = await fetchCursorUsage(cliState.credentials);
             attempts[attempts.length - 1] = {
-              source: "cli-keychain",
+              source: cliState.source.source,
               status: "success",
             };
             return cursorSuccess(quota, attempts);
           } catch (cliError) {
             finalError = errorMessage(cliError);
             attempts[attempts.length - 1] = {
-              source: "cli-keychain",
+              source: cliState.source.source,
               status: "failed",
               error: finalError,
             };
@@ -185,14 +192,17 @@ export async function inspectAuth(
 /**
  * The Cursor editor and CLI keep credentials in different stores, and either
  * source is enough, so a CLI-only machine with no editor `state.vscdb` can
- * still refresh quota after Keychain access is granted. Quota fetching tries
- * the non-prompting editor store first;
- * it reads the CLI Keychain value when the editor token is absent, unreadable,
- * or rejected by Cursor.
+ * still refresh quota after the CLI credential is available. Quota fetching
+ * tries the non-prompting editor store first; it reads the platform CLI
+ * credential source when the editor token is absent, unreadable, or rejected
+ * by Cursor.
  */
 async function resolveCredentials(options: ProviderOptions): Promise<{
   credentials?: CursorCredentials;
-  source?: "state-vscdb" | "cli-keychain";
+  source?:
+    | "state-vscdb"
+    | typeof CURSOR_CLI_SOURCE
+    | typeof CURSOR_CLI_AUTHFILE_SOURCE;
   unavailable: UnavailableCredentialState[];
 }> {
   const unavailable: UnavailableCredentialState[] = [];
@@ -211,7 +221,9 @@ async function resolveCredentials(options: ProviderOptions): Promise<{
   if (cliState.status === "available") {
     return {
       credentials: cliState.credentials,
-      source: "cli-keychain",
+      source: cliState.source.source as
+        | typeof CURSOR_CLI_SOURCE
+        | typeof CURSOR_CLI_AUTHFILE_SOURCE,
       unavailable,
     };
   }
@@ -253,6 +265,7 @@ export function normalizeCursorUsage(
   usage: unknown,
   planInfo?: unknown,
   credentials?: Pick<CursorCredentials, "email" | "membershipType">,
+  sandUsage?: unknown,
 ):
   | {
       plan?: string;
@@ -262,8 +275,7 @@ export function normalizeCursorUsage(
       refreshedAt: string;
     }
   | undefined {
-  const data = objectValue(usage);
-  if (!data) return undefined;
+  const data = objectValue(usage) ?? {};
   const planData = objectValue(planInfo);
   const plan = objectValue(planData?.planInfo);
   const planName =
@@ -273,6 +285,7 @@ export function normalizeCursorUsage(
   const reset =
     parseEpochMillisOrIso(data.billingCycleEnd) ??
     parseEpochMillisOrIso(plan?.billingCycleEnd);
+  const cycleStart = billingCycleStart(data, plan, reset);
   const planUsage = objectValue(data.planUsage);
   const windows: QuotaWindow[] = [];
 
@@ -285,6 +298,7 @@ export function normalizeCursorUsage(
         kind: "monthly",
         percentUsed: clampPercent(total),
         resetsAt: reset,
+        ...(cycleStart !== undefined ? { startsAt: cycleStart } : {}),
       }),
     );
   }
@@ -297,6 +311,7 @@ export function normalizeCursorUsage(
         kind: "monthly",
         percentUsed: clampPercent(auto),
         resetsAt: reset,
+        ...(cycleStart !== undefined ? { startsAt: cycleStart } : {}),
       }),
     );
   }
@@ -309,6 +324,7 @@ export function normalizeCursorUsage(
         kind: "monthly",
         percentUsed: clampPercent(api),
         resetsAt: reset,
+        ...(cycleStart !== undefined ? { startsAt: cycleStart } : {}),
       }),
     );
   }
@@ -339,6 +355,9 @@ export function normalizeCursorUsage(
     );
   }
 
+  const grokBot = grokBotWindow(sandUsage);
+  if (grokBot !== undefined) windows.push(grokBot);
+
   if (windows.length === 0) return undefined;
   return {
     plan: planName,
@@ -355,14 +374,23 @@ async function fetchCursorUsage(credentials: CursorCredentials): Promise<{
   credits?: ProviderQuota["credits"];
   refreshedAt: string;
 }> {
-  const [usage, planInfo] = await Promise.all([
+  const [usageResult, planResult, sandResult] = await Promise.allSettled([
     postDashboardRpc(credentials.accessToken, "GetCurrentPeriodUsage"),
-    postDashboardRpc(credentials.accessToken, "GetPlanInfo").catch(
-      () => undefined,
-    ),
+    postDashboardRpc(credentials.accessToken, "GetPlanInfo"),
+    postDashboardRpc(credentials.accessToken, "GetSandUsageStatus"),
   ]);
-  const quota = normalizeCursorUsage(usage, planInfo, credentials);
-  if (!quota) throw new Error("Cursor quota unavailable");
+  if (usageResult.status === "rejected") {
+    throw usageResult.reason;
+  }
+  const quota = normalizeCursorUsage(
+    usageResult.value,
+    planResult.status === "fulfilled" ? planResult.value : undefined,
+    credentials,
+    sandResult.status === "fulfilled" ? sandResult.value : undefined,
+  );
+  if (!quota) {
+    throw new Error("Cursor quota unavailable");
+  }
   return quota;
 }
 
@@ -507,6 +535,84 @@ function cursorStateDbPath(): string {
   );
 }
 
+/**
+ * Grok Bot weekly usage is a separate Cursor-account meter from the IDE
+ * monthly pools. The first-party DashboardService GetSandUsageStatus RPC
+ * reports it; enterprise pooled allowances and missing percents stay absent.
+ */
+function grokBotWindow(sandUsage: unknown): QuotaWindow | undefined {
+  const data = objectValue(sandUsage);
+  if (!data) return undefined;
+  if (
+    booleanValue(
+      pick(
+        data,
+        "usesPooledEnterpriseAllowance",
+        "uses_pooled_enterprise_allowance",
+      ),
+    ) === true
+  ) {
+    return undefined;
+  }
+  const percent = numberValue(pick(data, "usagePercent", "usage_percent"));
+  if (percent === undefined) return undefined;
+  const startsAt = parseEpochMillisOrIso(
+    pick(data, "currentPeriodStart", "current_period_start"),
+  );
+  const resetsAt = parseEpochMillisOrIso(
+    pick(data, "nextResetTimestampUtc", "next_reset_timestamp_utc"),
+  );
+  return withRemaining({
+    id: "grok_bot",
+    label: "Grok Bot",
+    kind: "weekly",
+    percentUsed: clampPercent(percent),
+    ...(startsAt !== undefined ? { startsAt } : {}),
+    ...(resetsAt !== undefined ? { resetsAt } : {}),
+  });
+}
+
+/**
+ * Cursor's included/auto/API pools reset once per monthly billing cycle on the
+ * subscription renewal date, so the cycle start is the previous renewal, not a
+ * fixed 30-day span before the reset. Prefer an explicit cycle-start field when
+ * the payload carries one; otherwise step the renewal date back one calendar
+ * month. Without either field the window keeps no trusted cycle.
+ */
+function billingCycleStart(
+  data: Record<string, unknown>,
+  plan: Record<string, unknown> | undefined,
+  cycleEnd: string | undefined,
+): string | undefined {
+  const reported =
+    parseEpochMillisOrIso(data.billingCycleStart) ??
+    parseEpochMillisOrIso(plan?.billingCycleStart);
+  if (reported !== undefined) return reported;
+  return cycleEnd === undefined ? undefined : previousCalendarMonth(cycleEnd);
+}
+
+/**
+ * The same civil (UTC) date one month earlier, clamped to the last day of that
+ * month when the day does not exist there (a 31st renewal lands on Feb 28/29).
+ */
+function previousCalendarMonth(iso: string): string | undefined {
+  const end = new Date(iso);
+  if (Number.isNaN(end.getTime())) return undefined;
+  const month = end.getUTCMonth();
+  const year = month === 0 ? end.getUTCFullYear() - 1 : end.getUTCFullYear();
+  const targetMonth = month === 0 ? 11 : month - 1;
+  const daysInTargetMonth = new Date(
+    Date.UTC(year, targetMonth + 1, 0),
+  ).getUTCDate();
+  const start = new Date(end.getTime());
+  start.setUTCFullYear(
+    year,
+    targetMonth,
+    Math.min(end.getUTCDate(), daysInTargetMonth),
+  );
+  return Number.isNaN(start.getTime()) ? undefined : start.toISOString();
+}
+
 function parseEpochMillisOrIso(value: unknown): string | undefined {
   const number = numberValue(value);
   if (number !== undefined) {
@@ -525,6 +631,18 @@ function objectValue(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object"
     ? (value as Record<string, unknown>)
     : undefined;
+}
+
+function pick(
+  data: Record<string, unknown>,
+  camel: string,
+  snake: string,
+): unknown {
+  return data[camel] !== undefined ? data[camel] : data[snake];
+}
+
+function booleanValue(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function stringValue(value: unknown): string | undefined {
