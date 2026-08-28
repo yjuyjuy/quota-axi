@@ -1,3 +1,4 @@
+import { grokCliRefreshNeeded } from "./providers/grok.js";
 import type {
   ProviderQuota,
   QuotaAxiResponse,
@@ -9,7 +10,6 @@ export const KEYCHAIN_ACCESS_REMEDY_COMMAND =
   "quota-axi --allow-keychain-prompt";
 export const CREDENTIALS_EXPIRED_REASON = "credentials_expired";
 export const GROK_TOKEN_REFRESH_REMEDY_COMMAND = "grok";
-export const GROK_ACCESS_TOKEN_EXPIRED_ERROR = "Grok access token expired";
 
 export function annotateQuotaAdvice(
   response: Omit<QuotaAxiResponse, "schemaVersion">,
@@ -18,19 +18,20 @@ export function annotateQuotaAdvice(
   const help = providers.flatMap(providerHelpLines);
   return {
     generatedAt: response.generatedAt,
-    schemaVersion: 3,
+    schemaVersion: 5,
     providers,
     ...(help.length > 0 ? { help } : {}),
   };
 }
 
+/**
+ * Situational advice stays first because it is actionable; only the tier hint
+ * is worth repeating on every invocation.
+ */
 export function quotaHelpLines(response: QuotaAxiResponse): string[] {
   return [
     ...(response.help ?? []),
-    "Default TOON reports effective headroom and usable runway; use --json or --full for reserve diagnostics",
-    "Run `quota-axi --provider claude --json` for JSON output",
-    "Run `quota-axi --full` to include account, source-attempt, and reserve details",
-    "Run `quota-axi auth` to inspect local auth source availability without printing secrets",
+    "Run `quota-axi --full` for windows, pace, reserve, and account evidence",
   ];
 }
 
@@ -72,8 +73,7 @@ function needsGrokTokenRefreshAdvice(provider: ProviderQuota): boolean {
   return (
     provider.provider === "grok" &&
     provider.state.status !== "fresh" &&
-    provider.state.authStatus === "expired_refreshable" &&
-    provider.state.error === GROK_ACCESS_TOKEN_EXPIRED_ERROR
+    grokCliRefreshNeeded(provider)
   );
 }
 
@@ -136,5 +136,5 @@ function keychainAccessHelpLine(provider: ProviderQuota): string {
 }
 
 function grokTokenRefreshHelpLine(): string {
-  return `Tell your user: open the Grok CLI (\`${GROK_TOKEN_REFRESH_REMEDY_COMMAND}\`) once so it can refresh Grok's local session token. quota-axi does not refresh credentials.`;
+  return `Tell your user: run \`${GROK_TOKEN_REFRESH_REMEDY_COMMAND}\` once so the Grok CLI can refresh its own session token. quota-axi delegates that refresh to the Grok CLI and never rotates credentials itself.`;
 }

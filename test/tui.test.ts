@@ -91,7 +91,6 @@ function claudeProvider(): ProviderQuota {
           runway: {
             status: "through_reset",
             projectionConfidence: "early",
-            projectionBasis: "cycle_average",
           },
         },
       ],
@@ -157,7 +156,6 @@ function codexProvider(): ProviderQuota {
             projectedExhaustedAt: "2026-08-07T06:42:36.000Z",
             limitingWindowId: "weekly",
             projectionConfidence: "established",
-            projectionBasis: "cycle_average",
           },
         },
       ],
@@ -213,7 +211,6 @@ function grokProvider(): ProviderQuota {
             projectedExhaustedAt: "2026-08-09T14:33:15.000Z",
             limitingWindowId: "credits",
             projectionConfidence: "established",
-            projectionBasis: "cycle_average",
           },
         },
       ],
@@ -247,7 +244,7 @@ function signedOutProvider(
 function fixtureResponse(): QuotaAxiResponse {
   return {
     generatedAt: GENERATED_AT,
-    schemaVersion: 3,
+    schemaVersion: 5,
     providers: [
       claudeProvider(),
       codexProvider(),
@@ -408,7 +405,6 @@ describe("renderQuotaTui structure", () => {
         usableRunwaySeconds: 360000,
         limitingWindowId: other.id,
         projectionConfidence: "established",
-        projectionBasis: "cycle_average",
       };
       response.providers = [claude];
 
@@ -851,11 +847,11 @@ describe("renderQuotaTui structure", () => {
 
 describe("cards for providers with no combinable bound", () => {
   /**
-   * Cursor reports real per-window usage but quota-axi cannot say whether those
+   * Copilot reports real per-window usage but quota-axi cannot say whether those
    * windows are independent or jointly bounding, so the real interpretation
    * yields no effective availability at all.
    */
-  function cursorProvider(stale = false): ProviderQuota {
+  function copilotProvider(stale = false): ProviderQuota {
     const window = (
       id: string,
       label: string,
@@ -870,32 +866,32 @@ describe("cards for providers with no combinable bound", () => {
     });
     return withQuotaSemantics(
       {
-        provider: "cursor",
-        label: "Cursor",
-        source: "state-vscdb",
+        provider: "copilot",
+        label: "Copilot",
+        source: "api",
         plan: "pro",
         windows: [
-          window("included_usage", "included usage", 42),
-          window("auto_usage", "auto usage", 12),
-          window("api_usage", "API usage", 0),
+          window("chat", "chat", 42),
+          window("completions", "completions", 12),
+          window("premium_interactions", "premium interactions", 0),
         ],
         state: {
           status: stale ? "stale" : "fresh",
           stale,
           checkedAt: GENERATED_AT,
-          sourcesTried: ["state-vscdb"],
+          sourcesTried: ["apps-json"],
         },
       },
       GENERATED_AT,
     );
   }
 
-  function renderWithCursor(stale = false): string[] {
+  function renderWithCopilot(stale = false): string[] {
     return renderQuotaTui(
       {
         generatedAt: GENERATED_AT,
-        schemaVersion: 3,
-        providers: [claudeProvider(), cursorProvider(stale)],
+        schemaVersion: 5,
+        providers: [claudeProvider(), copilotProvider(stale)],
       },
       { timeZone: "America/Los_Angeles" },
     ).split("\n");
@@ -917,7 +913,7 @@ describe("cards for providers with no combinable bound", () => {
   }
 
   it("names the card per-window instead of showing unknown headroom", () => {
-    const lines = renderWithCursor();
+    const lines = renderWithCopilot();
     const headline = findCardLine(lines, 1, "per-window usage");
     expect(headline).toContain("no combined bound");
     const card = lines.map((line) => line.slice(CARD_COLUMNS + 2)).join("\n");
@@ -926,41 +922,89 @@ describe("cards for providers with no combinable bound", () => {
   });
 
   it("drops the empty effective bar rather than rendering an empty track", () => {
-    const lines = renderWithCursor();
+    const lines = renderWithCopilot();
     const emptyTrack = lines
       .map((line) => stripAnsi(line).slice(CARD_COLUMNS + 2))
-      .filter((line) => /^│\s+─{10,}\s+│$/.test(line));
+      .filter((line) => /^\u2502\s+\u2500{10,}\s+\u2502$/.test(line));
     expect(emptyTrack).toHaveLength(0);
   });
 
   it("keeps the per-window rows it does have", () => {
-    const lines = renderWithCursor();
-    expect(findCardLine(lines, 1, "includ…")).toContain("58%");
-    expect(findCardLine(lines, 1, "auto ")).toContain("88%");
-    expect(findCardLine(lines, 1, "api ")).toContain("100%");
+    const lines = renderWithCopilot();
+    expect(findCardLine(lines, 1, "chat")).toContain("58%");
+    expect(findCardLine(lines, 1, "comple")).toContain("88%");
+    expect(findCardLine(lines, 1, "premiu")).toContain("100%");
   });
 
   it("still marks the card stale when the snapshot is stale", () => {
-    const lines = renderWithCursor(true);
-    expect(findCardLine(lines, 1, "● cursor")).toContain("stale");
-    expect(findCardLine(lines, 1, "stale · per-window usage")).toContain(
+    const lines = renderWithCopilot(true);
+    expect(findCardLine(lines, 1, "\u25cf copilot")).toContain("stale");
+    expect(findCardLine(lines, 1, "stale \u00b7 per-window usage")).toContain(
       "no combined bound",
     );
   });
 
-  it("leaves a provider with combinable bounds rendering its effective bar", () => {
-    const lines = renderWithCursor();
-    const withoutCursor = renderQuotaTui(
+  it("renders Cursor's jointly bounded card with its effective bar", () => {
+    const cursor = withQuotaSemantics(
+      {
+        provider: "cursor",
+        label: "Cursor",
+        source: "state-vscdb",
+        plan: "pro",
+        windows: [
+          {
+            id: "included_usage",
+            label: "included usage",
+            kind: "monthly",
+            percentUsed: 42,
+            percentRemaining: 58,
+            resetsAt: "2026-08-20T00:00:00.000Z",
+          },
+          {
+            id: "auto_usage",
+            label: "auto usage",
+            kind: "monthly",
+            percentUsed: 12,
+            percentRemaining: 88,
+            resetsAt: "2026-08-20T00:00:00.000Z",
+          },
+        ],
+        state: {
+          status: "fresh",
+          stale: false,
+          refreshedAt: GENERATED_AT,
+          sourcesTried: ["state-vscdb"],
+        },
+      },
+      GENERATED_AT,
+    );
+    const lines = renderQuotaTui(
       {
         generatedAt: GENERATED_AT,
-        schemaVersion: 3,
+        schemaVersion: 5,
+        providers: [claudeProvider(), cursor],
+      },
+      { timeZone: "America/Los_Angeles" },
+    ).split("\n");
+
+    expect(findCardLine(lines, 1, "58%")).toContain("includ");
+    const card = lines.map((line) => line.slice(CARD_COLUMNS + 2)).join("\n");
+    expect(card).not.toContain("no combined bound");
+  });
+
+  it("leaves a provider with combinable bounds rendering its effective bar", () => {
+    const lines = renderWithCopilot();
+    const withoutCopilot = renderQuotaTui(
+      {
+        generatedAt: GENERATED_AT,
+        schemaVersion: 5,
         providers: [claudeProvider()],
       },
       { timeZone: "America/Los_Angeles" },
     ).split("\n");
     const claudeCard = lines.map((line) => line.slice(0, CARD_COLUMNS));
-    expect(claudeCard.slice(2, 2 + withoutCursor.length - 2)).toEqual(
-      withoutCursor.slice(2).map((line) => line.slice(0, CARD_COLUMNS)),
+    expect(claudeCard.slice(2, 2 + withoutCopilot.length - 2)).toEqual(
+      withoutCopilot.slice(2).map((line) => line.slice(0, CARD_COLUMNS)),
     );
     expect(findCardLine(lines, 0, "72% week")).toBeDefined();
   });
@@ -974,7 +1018,7 @@ describe("cards for providers with no combinable bound", () => {
       const output = renderQuotaTui(
         {
           generatedAt: GENERATED_AT,
-          schemaVersion: 3,
+          schemaVersion: 5,
           providers: [unfamiliarClaude(stale)],
         },
         { timeZone: "America/Los_Angeles" },
@@ -1080,7 +1124,6 @@ describe("color handling", () => {
       usableRunwaySeconds: 3600,
       limitingWindowId: "seven_day",
       projectionConfidence: "established",
-      projectionBasis: "cycle_average",
     };
     const projected = renderQuotaTui(response, {
       colorDepth: "truecolor",
@@ -1095,7 +1138,6 @@ describe("color handling", () => {
       status: "exhausted_now",
       usableRunwaySeconds: 0,
       projectionConfidence: "established",
-      projectionBasis: "cycle_average",
     };
     const exhausted = renderQuotaTui(response, {
       colorDepth: "truecolor",

@@ -91,6 +91,11 @@ export function statusFromError(error: string): ProviderStatus {
   return "error";
 }
 
+/**
+ * Attempt order, deduplicated: a source can be attempted twice in one run (a
+ * credential store re-read after a delegated refresh), and `sourcesTried`
+ * names which sources were tried, not how many times.
+ */
 export function sourceNames(attempts: SourceAttempt[]): string[] {
-  return attempts.map((attempt) => attempt.source);
+  return [...new Set(attempts.map((attempt) => attempt.source))];
 }

@@ -9,6 +9,7 @@ import { validateCommand } from "./orchestrator/command.js";
 import { decideCommand } from "./orchestrator/decide-command.js";
 import { primeCommand } from "./orchestrator/prime-command.js";
 import { switchCommand } from "./orchestrator/switch-command.js";
+import { PROVIDER_IDS } from "./types.js";
 import { VERSION } from "./version.js";
 
 export const DESCRIPTION =
@@ -19,17 +20,19 @@ commands[7]:
   (none)=quota, auth, models, validate, decide, switch, prime
 output:
   Default TOON reports local quota evidence. models is a deterministic data join; --sort runway is explicit opt-in ordering. --tui renders a live human terminal report instead (q quits). validate checks the account registry + policy files. decide is the pure account-switch decider (ADR 0031 Phase 1): registry + policy + observations in, versioned decision JSON out, zero side effects. switch is the ONE mutation verb (ADR 0031 Phase 1): it actuates a decision onto the jcode live-session surface and records tripwire state; --dry-run previews without mutating. prime is the strategy-gated priming pass (ADR 0031 Phase 2): it keeps fixed-cost accounts auth-verified and telemetry-fresh, gated by policy.priming_strategy.enabled (OFF = zero synthetic traffic), preferring real-work routing over a minimal read-only synthetic ping; --dry-run previews without pinging.
-flags[16]:
-  --provider <claude,codex,cursor,copilot,grok,kimi>, --json, --full, --tui, --refresh <30s-24h>, --once, --allow-keychain-prompt, --intelligence <high|medium|low>, --sort <runway>, --observations <path>, --telemetry <path>, --decision <path>, --dry-run, --recover-after-seconds <n>, --help, -v/--version
+flags[17]:
+  --provider <${PROVIDER_IDS.join(",")}>, --json, --full, --tui, --refresh <30s-24h>, --once, --allow-keychain-prompt, --no-credential-refresh, --intelligence <high|medium|low>, --sort <runway>, --observations <path>, --telemetry <path>, --decision <path>, --dry-run, --recover-after-seconds <n>, --help, -v/--version
 examples:
   quota-axi
   quota-axi --provider claude
-  quota-axi --provider cursor,copilot,grok,kimi
+  quota-axi --provider agy
+  quota-axi --provider cursor,copilot,grok,kimi,zai
   quota-axi --json
   quota-axi --full
   quota-axi --tui
   quota-axi --tui --refresh 1m
   quota-axi --tui --once
+  quota-axi --no-credential-refresh
   quota-axi auth
   quota-axi models --intelligence high
   quota-axi models --sort runway

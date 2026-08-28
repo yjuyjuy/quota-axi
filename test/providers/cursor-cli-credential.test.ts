@@ -21,6 +21,7 @@ const originalEnv = {
   CURSOR_STATE_DB: process.env.CURSOR_STATE_DB,
   CURSOR_CLI_CONFIG: process.env.CURSOR_CLI_CONFIG,
   XDG_CACHE_HOME: process.env.XDG_CACHE_HOME,
+  XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
 };
 let tempDir: string | undefined;
 let cliConfigPath: string;
@@ -61,6 +62,13 @@ async function withPlatform<T>(
 
 function writeCliConfig(value: unknown = CLI_CONFIG): void {
   writeFileSync(cliConfigPath, JSON.stringify(value));
+}
+
+function writeLinuxAuthFile(accessToken = "linux-auth-token"): void {
+  writeFileSync(
+    cliConfigPath,
+    JSON.stringify({ accessToken, refreshToken: "must-never-be-used" }),
+  );
 }
 
 type ExecCall = { command: string; args: string[] };
@@ -164,7 +172,10 @@ describe("Cursor CLI keychain credential source", () => {
 
     const result = await withPlatform("darwin", async () => {
       const { fetchQuota } = await import("../../src/providers/cursor.js");
-      return fetchQuota({ allowKeychainPrompt: true });
+      return fetchQuota({
+        allowKeychainPrompt: true,
+        refreshCredentials: false,
+      });
     });
 
     expect(result.state.status).toBe("fresh");
@@ -198,8 +209,14 @@ describe("Cursor CLI keychain credential source", () => {
       const { fetchQuota, inspectAuth } =
         await import("../../src/providers/cursor.js");
       return {
-        report: await fetchQuota({ allowKeychainPrompt: true }),
-        auth: await inspectAuth({ allowKeychainPrompt: true }),
+        report: await fetchQuota({
+          allowKeychainPrompt: true,
+          refreshCredentials: false,
+        }),
+        auth: await inspectAuth({
+          allowKeychainPrompt: true,
+          refreshCredentials: false,
+        }),
       };
     });
 
@@ -219,7 +236,10 @@ describe("Cursor CLI keychain credential source", () => {
 
     const result = await withPlatform("darwin", async () => {
       const { fetchQuota } = await import("../../src/providers/cursor.js");
-      return fetchQuota({ allowKeychainPrompt: false });
+      return fetchQuota({
+        allowKeychainPrompt: false,
+        refreshCredentials: false,
+      });
     });
 
     expect(securityCalls(calls)).toEqual([
@@ -254,7 +274,10 @@ describe("Cursor CLI keychain credential source", () => {
 
       const result = await withPlatform("darwin", async () => {
         const { fetchQuota } = await import("../../src/providers/cursor.js");
-        return fetchQuota({ allowKeychainPrompt: false });
+        return fetchQuota({
+          allowKeychainPrompt: false,
+          refreshCredentials: false,
+        });
       });
       const annotated = annotateQuotaAdvice({
         generatedAt: new Date().toISOString(),
@@ -279,7 +302,10 @@ describe("Cursor CLI keychain credential source", () => {
 
     const granted = await withPlatform("darwin", async () => {
       const { fetchQuota } = await import("../../src/providers/cursor.js");
-      return fetchQuota({ allowKeychainPrompt: true });
+      return fetchQuota({
+        allowKeychainPrompt: true,
+        refreshCredentials: false,
+      });
     });
     expect(granted.state.status).toBe("fresh");
 
@@ -288,7 +314,10 @@ describe("Cursor CLI keychain credential source", () => {
     stubCursorUsage();
     const plain = await withPlatform("darwin", async () => {
       const { fetchQuota } = await import("../../src/providers/cursor.js");
-      return fetchQuota({ allowKeychainPrompt: false });
+      return fetchQuota({
+        allowKeychainPrompt: false,
+        refreshCredentials: false,
+      });
     });
 
     expect(plain.state.status).toBe("fresh");
@@ -300,7 +329,10 @@ describe("Cursor CLI keychain credential source", () => {
 
     const result = await withPlatform("darwin", async () => {
       const { fetchQuota } = await import("../../src/providers/cursor.js");
-      return fetchQuota({ allowKeychainPrompt: true });
+      return fetchQuota({
+        allowKeychainPrompt: true,
+        refreshCredentials: false,
+      });
     });
 
     expect(securityCalls(calls)).toEqual([]);
@@ -320,7 +352,10 @@ describe("Cursor CLI keychain credential source", () => {
 
     const result = await withPlatform("darwin", async () => {
       const { inspectAuth } = await import("../../src/providers/cursor.js");
-      return inspectAuth({ allowKeychainPrompt: true });
+      return inspectAuth({
+        allowKeychainPrompt: true,
+        refreshCredentials: false,
+      });
     });
 
     expect(result.sources).toContainEqual({
@@ -343,7 +378,10 @@ describe("Cursor CLI keychain credential source", () => {
 
     const result = await withPlatform("darwin", async () => {
       const { inspectAuth } = await import("../../src/providers/cursor.js");
-      return inspectAuth({ allowKeychainPrompt: true });
+      return inspectAuth({
+        allowKeychainPrompt: true,
+        refreshCredentials: false,
+      });
     });
 
     expect(result.sources).toContainEqual({
@@ -360,7 +398,10 @@ describe("Cursor CLI keychain credential source", () => {
 
     const result = await withPlatform("darwin", async () => {
       const { inspectAuth } = await import("../../src/providers/cursor.js");
-      return inspectAuth({ allowKeychainPrompt: true });
+      return inspectAuth({
+        allowKeychainPrompt: true,
+        refreshCredentials: false,
+      });
     });
 
     expect(securityCalls(calls)).toEqual([]);
@@ -372,18 +413,103 @@ describe("Cursor CLI keychain credential source", () => {
     });
   });
 
-  it("omits the macOS-only CLI source on other platforms", async () => {
+  it("reads only the Linux auth-file access token", async () => {
+    writeLinuxAuthFile();
+
+    const result = await withPlatform("linux", async () => {
+      const { readCursorCliCredentialState } =
+        await import("../../src/providers/cursor-cli-credential.js");
+      return readCursorCliCredentialState({
+        allowKeychainPrompt: true,
+        refreshCredentials: false,
+      });
+    });
+
+    expect(result).toEqual({
+      status: "available",
+      accessToken: "linux-auth-token",
+      identity: {},
+      source: {
+        source: "cli-authfile",
+        path: cliConfigPath,
+        status: "available",
+        credentialPresent: true,
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("must-never-be-used");
+  });
+
+  it("resolves the Linux auth file below XDG config home", async () => {
+    delete process.env.CURSOR_CLI_CONFIG;
+    const xdgConfigHome = join(tempDir!, "xdg-config");
+    process.env.XDG_CONFIG_HOME = xdgConfigHome;
+    const authPath = join(xdgConfigHome, "cursor", "auth.json");
+    const { mkdirSync } = await import("node:fs");
+    mkdirSync(join(xdgConfigHome, "cursor"), { recursive: true });
+    writeFileSync(authPath, JSON.stringify({ accessToken: "xdg-token" }));
+
+    const result = await withPlatform("linux", async () => {
+      const { readCursorCliCredentialState } =
+        await import("../../src/providers/cursor-cli-credential.js");
+      return readCursorCliCredentialState({
+        allowKeychainPrompt: false,
+        refreshCredentials: false,
+      });
+    });
+
+    expect(result.source).toEqual({
+      source: "cli-authfile",
+      path: authPath,
+      status: "available",
+      credentialPresent: true,
+    });
+    expect(result.status).toBe("available");
+  });
+
+  it("reports the Linux auth-file source when its JSON is malformed", async () => {
+    writeFileSync(cliConfigPath, "{not json");
+
+    const result = await withPlatform("linux", async () => {
+      const { readCursorCliCredentialState } =
+        await import("../../src/providers/cursor-cli-credential.js");
+      return readCursorCliCredentialState({
+        allowKeychainPrompt: true,
+        refreshCredentials: false,
+      });
+    });
+
+    expect(result).toEqual({
+      status: "invalid",
+      source: {
+        source: "cli-authfile",
+        path: cliConfigPath,
+        status: "invalid",
+        error: "json_parse_error",
+      },
+    });
+  });
+
+  it("reports the Linux auth-file source when its token is missing", async () => {
     writeCliConfig();
     const { calls } = mockProcess({});
 
     const result = await withPlatform("linux", async () => {
       const { inspectAuth } = await import("../../src/providers/cursor.js");
-      return inspectAuth({ allowKeychainPrompt: true });
+      return inspectAuth({
+        allowKeychainPrompt: true,
+        refreshCredentials: false,
+      });
     });
 
     expect(result.sources.map((source) => source.source)).toEqual([
       "state-vscdb",
+      "cli-authfile",
     ]);
+    expect(result.sources[1]).toEqual({
+      source: "cli-authfile",
+      path: cliConfigPath,
+      status: "missing",
+    });
     expect(securityCalls(calls)).toEqual([]);
   });
 });
@@ -396,11 +522,17 @@ describe("Cursor editor state.vscdb source (regression)", () => {
     const result = await withPlatform("darwin", async () => {
       const { readCursorCliCredentialState } =
         await import("../../src/providers/cursor-cli-credential.js");
-      await readCursorCliCredentialState({ allowKeychainPrompt: true });
+      await readCursorCliCredentialState({
+        allowKeychainPrompt: true,
+        refreshCredentials: false,
+      });
       calls.length = 0;
 
       const { inspectAuth } = await import("../../src/providers/cursor.js");
-      return inspectAuth({ allowKeychainPrompt: true });
+      return inspectAuth({
+        allowKeychainPrompt: true,
+        refreshCredentials: false,
+      });
     });
 
     expect(result.sources).toEqual([
@@ -441,7 +573,10 @@ describe("Cursor editor state.vscdb source (regression)", () => {
 
       const result = await withPlatform("darwin", async () => {
         const { fetchQuota } = await import("../../src/providers/cursor.js");
-        return fetchQuota({ allowKeychainPrompt: true });
+        return fetchQuota({
+          allowKeychainPrompt: true,
+          refreshCredentials: false,
+        });
       });
 
       expect(result.state.status).toBe("fresh");
@@ -475,7 +610,10 @@ describe("Cursor editor state.vscdb source (regression)", () => {
 
       const result = await withPlatform("darwin", async () => {
         const { fetchQuota } = await import("../../src/providers/cursor.js");
-        return fetchQuota({ allowKeychainPrompt: false });
+        return fetchQuota({
+          allowKeychainPrompt: false,
+          refreshCredentials: false,
+        });
       });
       const annotated = annotateQuotaAdvice({
         generatedAt: new Date().toISOString(),
@@ -516,7 +654,10 @@ describe("Cursor editor state.vscdb source (regression)", () => {
 
       const result = await withPlatform("darwin", async () => {
         const { fetchQuota } = await import("../../src/providers/cursor.js");
-        return fetchQuota({ allowKeychainPrompt: true });
+        return fetchQuota({
+          allowKeychainPrompt: true,
+          refreshCredentials: false,
+        });
       });
 
       expect(result.state.status).toBe(
@@ -534,7 +675,10 @@ describe("Cursor editor state.vscdb source (regression)", () => {
 
     const result = await withPlatform("darwin", async () => {
       const { fetchQuota } = await import("../../src/providers/cursor.js");
-      return fetchQuota({ allowKeychainPrompt: true });
+      return fetchQuota({
+        allowKeychainPrompt: true,
+        refreshCredentials: false,
+      });
     });
 
     expect(result.state.status).toBe("fresh");
@@ -553,7 +697,10 @@ describe("Cursor editor state.vscdb source (regression)", () => {
 
     const result = await withPlatform("darwin", async () => {
       const { fetchQuota } = await import("../../src/providers/cursor.js");
-      return fetchQuota({ allowKeychainPrompt: false });
+      return fetchQuota({
+        allowKeychainPrompt: false,
+        refreshCredentials: false,
+      });
     });
 
     expect(result.state.status).toBe("auth_required");

@@ -222,7 +222,10 @@ export function sharedCacheProber(): PrimingProber {
     const adapter = PROVIDERS[providerId];
     try {
       const quota = await readThroughUsageCache(providerId, () =>
-        adapter.fetchQuota({ allowKeychainPrompt: false }),
+        adapter.fetchQuota({
+          allowKeychainPrompt: false,
+          refreshCredentials: false,
+        }),
       );
       const status = quota.state.status;
       const authVerified =

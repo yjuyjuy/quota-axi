@@ -163,7 +163,10 @@ describe("GitHub Copilot quota parsing", () => {
       ),
     );
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state.status).toBe("rate_limited");
     expect(result.state.retryAfter).toBe("2026-08-01T00:00:00.000Z");
@@ -195,7 +198,10 @@ describe("GitHub Copilot quota parsing", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state.status).toBe("fresh");
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -210,7 +216,10 @@ describe("GitHub Copilot quota parsing", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state.status).toBe("auth_required");
     expect(fetchMock).not.toHaveBeenCalled();
@@ -239,7 +248,10 @@ describe("GitHub Copilot quota parsing", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await fetchQuota({ allowKeychainPrompt: false });
+    const result = await fetchQuota({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.state.status).toBe("fresh");
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -257,7 +269,10 @@ describe("GitHub Copilot quota parsing", () => {
       },
     });
 
-    const result = await inspectAuth({ allowKeychainPrompt: false });
+    const result = await inspectAuth({
+      allowKeychainPrompt: false,
+      refreshCredentials: false,
+    });
 
     expect(result.sources).toContainEqual({
       source: "apps-json",
@@ -280,7 +295,10 @@ describe("GitHub Copilot quota parsing", () => {
     });
 
     await withPlatform("win32", async () => {
-      const result = await inspectAuth({ allowKeychainPrompt: false });
+      const result = await inspectAuth({
+        allowKeychainPrompt: false,
+        refreshCredentials: false,
+      });
 
       expect(result.sources).toContainEqual({
         source: "apps-json",
